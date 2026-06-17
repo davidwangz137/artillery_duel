@@ -49,7 +49,7 @@ export class GameState {
   }
 
   step(dt) {
-    this.time += dt;
+    this.lastDt = dt; // available to controllers that need timing (e.g. AI)
     this.events.length = 0;
 
     // 1. Controllers decide intent; tanks act (may spawn shells).
@@ -59,9 +59,10 @@ export class GameState {
       if (action) t.applyAction(action, dt, this);
     }
 
-    // 2. Respawn destroyed tanks after their delay.
+    // 2. Respawn destroyed tanks that opt into auto-respawn (enemies do; the
+    //    player does not — player death ends the run).
     for (const t of this.tanks) {
-      if (!t.alive) {
+      if (!t.alive && t.autoRespawn) {
         t.respawnTimer -= dt;
         if (t.respawnTimer <= 0) {
           t.respawn();

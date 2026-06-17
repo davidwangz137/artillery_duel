@@ -6,6 +6,8 @@ import { ARENA, COLORS, GRAVITY, MUZZLE_SPEED } from './constants.js';
 // It never mutates game state.
 
 const MAX_TRAJ_POINTS = 220;
+const SHELL_TRAIL_POINTS = 12;
+const SHELL_TRAIL_STEP = 0.5;
 
 export class Renderer {
   constructor(canvas) {
@@ -28,6 +30,7 @@ export class Renderer {
 
     this._buildGround();
     this._buildTrajectory();
+    this._trails = new Map(); // shell -> motion-streak Line
   }
 
   _buildGround() {
@@ -82,7 +85,56 @@ export class Renderer {
       }
     }
 
+    this._syncTrails(state);
     this._updateTrajectory(aimTank);
+  }
+
+  // Per-shell motion streak: a short line extruded backward along each shell's
+  // velocity, so arcing shots are easy to track and dodge.
+  _syncTrails(state) {
+    for (const s of state.shells) {
+      if (this._trails.has(s)) continue;
+      const N = SHELL_TRAIL_POINTS;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+      const col = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const a = 1 - i / (N - 1); // head bright -> tail dark
+        col[i * 3] = 1.0 * a;
+        col[i * 3 + 1] = 0.82 * a;
+        col[i * 3 + 2] = 0.29 * a;
+      }
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const line = new THREE.Line(
+        geo,
+        new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85 })
+      );
+      line.frustumCulled = false;
+      this._trails.set(s, line);
+      this.scene.add(line);
+    }
+    for (const [s, line] of this._trails) {
+      if (!state.shells.includes(s)) {
+        this.scene.remove(line);
+        line.geometry.dispose();
+        line.material.dispose();
+        this._trails.delete(s);
+      }
+    }
+    for (const s of state.shells) {
+      const line = this._trails.get(s);
+      const arr = line.geometry.attributes.position.array;
+      const sp = Math.hypot(s.velocity.x, s.velocity.y, s.velocity.z) || 1;
+      const ux = s.velocity.x / sp, uy = s.velocity.y / sp, uz = s.velocity.z / sp;
+      const N = SHELL_TRAIL_POINTS;
+      for (let i = 0; i < N; i++) {
+        const off = i * SHELL_TRAIL_STEP;
+        arr[i * 3] = s.position.x - ux * off;
+        arr[i * 3 + 1] = s.position.y - uy * off;
+        arr[i * 3 + 2] = s.position.z - uz * off;
+      }
+      line.geometry.attributes.position.needsUpdate = true;
+    }
   }
 
   _updateTrajectory(tank) {

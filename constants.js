@@ -43,6 +43,7 @@ export const COLORS = {
   shell: 0xffd24a,
   impact: 0xc8863a,
   muzzle: 0xffe08a,
+  enemyPalette: [0xd94a4a, 0xd97ac0, 0xc09b3a, 0x9b5bd9],
 };
 
 // Re-exported physics scalars for convenience at call sites.
@@ -50,3 +51,11 @@ export const GRAVITY = PHYSICS.gravity;
 export const MUZZLE_SPEED = PHYSICS.muzzleSpeed;
 
 export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+export const GAME = {
+  numOpponents: 2,
+  aiCooldown: 2.2,    // AI fires slower than the player (1.1) — firepower edge to the human
+  aiScatter: 0.10,    // baseline aim scatter (rad). Bigger = easier to dodge.
+  aiFireTol: 0.035,   // aim tolerance (rad) before the AI pulls the trigger
+  preferredRange: 24, // distance the AI tries to keep from its target
+};
