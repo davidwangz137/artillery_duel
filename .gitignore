@@ -1,0 +1,18 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# logs
+*.log
+
+# future build tooling (not used yet)
+node_modules/
+dist/
+build/
+
+# editor config (keep if shared; uncomment to ignore personal prefs)
+# .vscode/
+# .idea/

@@ -1,0 +1,170 @@
+import * as THREE from 'three';
+import {
+  ARENA,
+  TANK,
+  COMBAT,
+  RESPAWN,
+  MUZZLE_SPEED,
+  clamp,
+} from './constants.js';
+
+// Scratch vectors (avoid per-frame allocations).
+const _aim = new THREE.Vector3();
+const _muzzle = new THREE.Vector3();
+const _oldPos = new THREE.Vector3();
+
+// A tank. Extends THREE.Group: its world transform IS its position/orientation.
+// Has no idea who is steering it — that's a Controller's job (see applyAction).
+export class Tank extends THREE.Group {
+  constructor({ id, color, name }) {
+    super();
+    this.tankId = id;
+    this.name = name;
+    this.color = color;
+
+    this.maxHp = COMBAT.maxHp;
+    this.hp = this.maxHp;
+
+    // Pose state. bodyYaw + turretYawOffset combine into the world aim yaw.
+    this.bodyYaw = 0;
+    this.turretYawOffset = 0;
+    this.pitch = Math.PI / 6; // 30° default elevation
+    this.cooldown = 0;        // seconds until next shot allowed
+    this.velocity = new THREE.Vector3(); // observed by future AI for target-leading
+    this.hitFlash = 0;        // seconds of red emissive flash remaining
+    this.alive = true;
+    this.respawnTimer = 0;
+    this._spawn = new THREE.Vector3(); // set by the spawner; used on respawn
+
+    this._build(color);
+  }
+
+  _build(color) {
+    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.15 });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(3, 1.2, 4), bodyMat);
+    body.position.y = 0.9;
+    this.add(body);
+    this.bodyMesh = body; // flashed red on hit
+
+    // Turret pivots on yaw (relative to body); barrel pitches inside it.
+    const turret = new THREE.Group();
+    turret.position.y = 1.5;
+    this.add(turret);
+    this.turret = turret;
+
+    const dome = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.9, 14), bodyMat);
+    turret.add(dome);
+
+    // Cylinder geometry points along +Y; lay it along +Z then elevate via pitch.
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.18, 2.6, 10),
+      new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.3, roughness: 0.5 })
+    );
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.05, 1.1);
+    turret.add(barrel);
+    this.barrel = barrel;
+    this._muzzleForward = 2.4; // distance from turret pivot to muzzle, along aim dir
+  }
+
+  get aimYaw() {
+    return this.bodyYaw + this.turretYawOffset;
+  }
+
+  // Unit vector the barrel points, in world space.
+  aimDirection(out = _aim) {
+    const y = this.aimYaw;
+    const p = this.pitch;
+    return out.set(Math.cos(p) * Math.sin(y), Math.sin(p), Math.cos(p) * Math.cos(y));
+  }
+
+  muzzlePosition(out = _muzzle) {
+    out.set(this.position.x, this.position.y + 1.55, this.position.z);
+    out.addScaledVector(this.aimDirection(), this._muzzleForward);
+    return out;
+  }
+
+  // Apply one frame's intent. Movement, aim, and firing all happen here.
+  // Spawns a shell into `state` when firing and off cooldown.
+  applyAction(a, dt, state) {
+    if (!this.alive) return;
+
+    // Body rotation + drive.
+    this.bodyYaw += a.bodyTurn * TANK.bodyTurnSpeed * dt;
+    _oldPos.copy(this.position);
+    const fwdX = Math.sin(this.bodyYaw);
+    const fwdZ = Math.cos(this.bodyYaw);
+    this.position.x += fwdX * a.drive * TANK.driveSpeed * dt;
+    this.position.z += fwdZ * a.drive * TANK.driveSpeed * dt;
+    // Clamp to arena bounds.
+    const lim = ARENA.half - 1.5;
+    this.position.x = clamp(this.position.x, -lim, lim);
+    this.position.z = clamp(this.position.z, -lim, lim);
+    // Observed velocity (for AI target-leading).
+    const inv = 1 / Math.max(dt, 1e-4);
+    this.velocity.set((this.position.x - _oldPos.x) * inv, 0, (this.position.z - _oldPos.z) * inv);
+
+    // Turret aim.
+    this.turretYawOffset += a.turretYaw * TANK.turretYawSpeed * dt;
+    this.pitch = clamp(this.pitch + a.turretPitch * TANK.turretPitchSpeed * dt, TANK.pitchMin, TANK.pitchMax);
+
+    // Cooldown + fire.
+    if (this.cooldown > 0) this.cooldown = Math.max(0, this.cooldown - dt);
+    if (a.fire && this.cooldown <= 0) {
+      this.cooldown = COMBAT.fireCooldown;
+      this._fire(state);
+    }
+
+    // Decay hit flash.
+    if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt);
+    this._syncMesh();
+  }
+
+  _fire(state) {
+    const dir = this.aimDirection(new THREE.Vector3());
+    const muzzle = this.muzzlePosition(new THREE.Vector3());
+    state.spawnShell(muzzle, dir.multiplyScalar(MUZZLE_SPEED), this.tankId);
+    state.spawnMuzzleFlash(muzzle);
+  }
+
+  _syncMesh() {
+    this.rotation.y = this.bodyYaw;
+    this.turret.rotation.y = this.turretYawOffset;
+    this.barrel.rotation.x = Math.PI / 2 - this.pitch; // lay along Z, then elevate up
+    const mat = this.bodyMesh.material;
+    if (this.hitFlash > 0) {
+      mat.emissive.setHex(0xff0000);
+      mat.emissiveIntensity = Math.min(1, this.hitFlash * 4);
+    } else {
+      mat.emissive.setHex(0x000000);
+      mat.emissiveIntensity = 0;
+    }
+  }
+
+  takeDamage(d) {
+    if (!this.alive) return;
+    this.hp -= d;
+    this.hitFlash = 0.25;
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.alive = false;
+      this.respawnTimer = RESPAWN.delay;
+      this.visible = false;
+    }
+  }
+
+  respawn() {
+    this.hp = this.maxHp;
+    this.alive = true;
+    this.visible = true;
+    this.position.copy(this._spawn);
+    this.bodyYaw = 0;
+    this.turretYawOffset = 0;
+    this.pitch = Math.PI / 6;
+    this.cooldown = 0;
+    this.hitFlash = 0;
+    this.velocity.set(0, 0, 0);
+    this._syncMesh();
+  }
+}

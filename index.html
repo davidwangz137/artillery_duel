@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Artillery Duel</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #9fd3ff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    #game { display: block; width: 100vw; height: 100vh; }
+
+    #hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    }
+    .help {
+      position: absolute;
+      top: 10px; left: 12px;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      opacity: 0.9;
+    }
+    .bars {
+      position: absolute;
+      top: 10px; right: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 220px;
+    }
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      transition: opacity 0.2s;
+    }
+    .bar-label { width: 52px; }
+    .bar-track {
+      flex: 1;
+      height: 12px;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      width: 100%;
+      border-radius: 6px;
+      transition: width 0.12s linear;
+    }
+    .bar-hp { width: 64px; font-variant-numeric: tabular-nums; }
+    .status {
+      position: absolute;
+      bottom: 16px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+      letter-spacing: 0.03em;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="hud"></div>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
