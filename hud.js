@@ -8,14 +8,16 @@ function el(tag, cls, text) {
   return e;
 }
 
+// Shown on the title, pause, and game-over overlays (and the in-play help).
+const CONTROLS = 'WASD drive/turn  ·  Q/E turret  ·  R/F aim  ·  SPACE fire  ·  P pause';
+
 export class Hud {
   constructor(state, player, enemies, root = document.getElementById('hud')) {
     this.state = state;
     this.player = player;
     this.enemies = enemies;
 
-    root.appendChild(el('div', 'help',
-      'WASD drive/turn  ·  Q/E turret  ·  R/F aim  ·  SPACE fire'));
+    root.appendChild(el('div', 'help', CONTROLS));
 
     this.bars = root.appendChild(el('div', 'bars'));
     this.playerBar = this._bar('YOU', '#4a90d9');
@@ -26,6 +28,7 @@ export class Hud {
     this.overlay = root.appendChild(el('div', 'overlay hidden'));
     this.overlayTitle = this.overlay.appendChild(el('div', 'overlay-title', ''));
     this.overlayScore = this.overlay.appendChild(el('div', 'overlay-score', ''));
+    this.overlayControls = this.overlay.appendChild(el('div', 'overlay-controls', CONTROLS));
     this.overlayHint = this.overlay.appendChild(el('div', 'overlay-hint', ''));
   }
 
@@ -45,32 +48,37 @@ export class Hud {
     const alive = this.enemies.filter((e) => e.alive).length;
     this.stats.textContent = `SCORE ${score}   ·   ENEMIES ${alive}/${this.enemies.length}`;
 
-    if (mode === 'title') {
-      this.overlayTitle.textContent = 'ARTILLERY DUEL';
-      this.overlayScore.textContent = 'WASD drive · Q/E turret · R/F aim · SPACE fire';
-      this.overlayHint.textContent = 'Press any key to start';
-      this.overlay.classList.remove('hidden');
-      this.status.textContent = '';
+    // In play: no overlay; show reload status + hit toasts.
+    if (mode === 'playing') {
+      this.overlay.classList.add('hidden');
+      const ready = this.player.cooldown <= 0;
+      let toast = '';
+      for (const ev of state.events) {
+        if (ev.type === 'hit' && ev.by === 'player') toast = ev.fatal ? 'KILL!' : 'Hit!';
+      }
+      this.status.textContent =
+        `[ ${ready ? 'READY' : `reload ${this.player.cooldown.toFixed(1)}s`} ]` +
+        (toast ? '   ' + toast : '');
       return;
     }
-    if (mode === 'game_over') {
+
+    // Overlay screens (title / paused / game over) share the controls line.
+    this.overlay.classList.remove('hidden');
+    this.status.textContent = '';
+    if (mode === 'title') {
+      this.overlayTitle.textContent = 'ARTILLERY DUEL';
+      this.overlayScore.textContent = '';
+      this.overlayHint.textContent = 'Press any key to start';
+    } else if (mode === 'paused') {
+      this.overlayTitle.textContent = 'PAUSED';
+      this.overlayScore.textContent = `Score ${score}   ·   Best ${best}`;
+      this.overlayHint.textContent = 'Press P to resume';
+    } else {
+      // game_over
       this.overlayTitle.textContent = 'GAME OVER';
       this.overlayScore.textContent = `Final score: ${score}   ·   Best: ${best}`;
       this.overlayHint.textContent = 'Press ENTER to restart';
-      this.overlay.classList.remove('hidden');
-      this.status.textContent = '';
-      return;
     }
-    this.overlay.classList.add('hidden');
-
-    const ready = this.player.cooldown <= 0;
-    let toast = '';
-    for (const ev of state.events) {
-      if (ev.type === 'hit' && ev.by === 'player') toast = ev.fatal ? 'KILL!' : 'Hit!';
-    }
-    this.status.textContent =
-      `[ ${ready ? 'READY' : `reload ${this.player.cooldown.toFixed(1)}s`} ]` +
-      (toast ? '   ' + toast : '');
   }
 
   _setHp(bar, tank) {

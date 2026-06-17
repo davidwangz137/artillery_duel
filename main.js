@@ -13,7 +13,7 @@ import * as audio from './audio.js';
 // Controllers (intent). The loop is: controllers produce Actions, state.step
 // advances the world, renderer draws it.
 
-const MODE = { TITLE: 'title', PLAYING: 'playing', GAME_OVER: 'game_over' };
+const MODE = { TITLE: 'title', PLAYING: 'playing', PAUSED: 'paused', GAME_OVER: 'game_over' };
 function main() {
   const canvas = document.getElementById('game');
   const renderer = new Renderer(canvas);
@@ -73,13 +73,18 @@ function main() {
     mode = MODE.PLAYING;
   };
 
-  // Title -> any key starts (and unlocks audio). Game over -> Enter restarts.
+  // Title -> any key starts (and unlocks audio). P/Esc toggles pause during
+  // play. Game over -> Enter restarts. `e.repeat` ignores key autorepeat so
+  // holding P can't flicker pause/resume.
   addEventListener('keydown', (e) => {
+    if (e.repeat) return;
     if (mode === MODE.TITLE) {
       audio.unlockAudio();
       mode = MODE.PLAYING;
-    } else if (e.code === 'Enter' && mode === MODE.GAME_OVER) {
-      resetGame();
+    } else if (mode === MODE.GAME_OVER) {
+      if (e.code === 'Enter') resetGame();
+    } else if (e.code === 'KeyP' || e.code === 'Escape') {
+      mode = mode === MODE.PAUSED ? MODE.PLAYING : MODE.PAUSED;
     }
   });
 
