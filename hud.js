@@ -24,9 +24,9 @@ export class Hud {
     this.status = root.appendChild(el('div', 'status', ''));
 
     this.overlay = root.appendChild(el('div', 'overlay hidden'));
-    this.overlay.appendChild(el('div', 'overlay-title', 'GAME OVER'));
+    this.overlayTitle = this.overlay.appendChild(el('div', 'overlay-title', ''));
     this.overlayScore = this.overlay.appendChild(el('div', 'overlay-score', ''));
-    this.overlay.appendChild(el('div', 'overlay-hint', 'Press ENTER to restart'));
+    this.overlayHint = this.overlay.appendChild(el('div', 'overlay-hint', ''));
   }
 
   _bar(label, color) {
@@ -39,16 +39,26 @@ export class Hud {
     return { row, fill, hp: row.querySelector('.bar-hp') };
   }
 
-  update(state, { score, mode }) {
+  update(state, { score, mode, best }) {
     this._setHp(this.playerBar, this.player);
 
     const alive = this.enemies.filter((e) => e.alive).length;
     this.stats.textContent = `SCORE ${score}   ·   ENEMIES ${alive}/${this.enemies.length}`;
 
-    if (mode === 'game_over') {
-      this.status.textContent = '';
+    if (mode === 'title') {
+      this.overlayTitle.textContent = 'ARTILLERY DUEL';
+      this.overlayScore.textContent = 'WASD drive · Q/E turret · R/F aim · SPACE fire';
+      this.overlayHint.textContent = 'Press any key to start';
       this.overlay.classList.remove('hidden');
-      this.overlayScore.textContent = `Final score: ${score}`;
+      this.status.textContent = '';
+      return;
+    }
+    if (mode === 'game_over') {
+      this.overlayTitle.textContent = 'GAME OVER';
+      this.overlayScore.textContent = `Final score: ${score}   ·   Best: ${best}`;
+      this.overlayHint.textContent = 'Press ENTER to restart';
+      this.overlay.classList.remove('hidden');
+      this.status.textContent = '';
       return;
     }
     this.overlay.classList.add('hidden');

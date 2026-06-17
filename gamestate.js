@@ -37,6 +37,7 @@ export class GameState {
   spawnShell(pos, vel, ownerId) {
     const s = new Shell(pos, vel, ownerId);
     this.shells.push(s);
+    this.events.push({ type: 'fire', by: ownerId });
     return s;
   }
 
@@ -79,6 +80,7 @@ export class GameState {
       if (!s.alive && !s._impacted && s.position.y <= SHELL.radius + 0.05) {
         s._impacted = true;
         this.spawnImpact(s.position);
+        this.events.push({ type: 'impact', x: s.position.x, y: s.position.y, z: s.position.z });
       }
     }
 

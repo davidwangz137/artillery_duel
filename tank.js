@@ -18,6 +18,7 @@ const _oldPos = new THREE.Vector3();
 export class Tank extends THREE.Group {
   constructor({ id, color, name }) {
     super();
+    this.isTank = true;
     this.tankId = id;
     this.name = name;
     this.color = color;

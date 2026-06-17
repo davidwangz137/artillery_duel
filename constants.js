@@ -53,7 +53,9 @@ export const MUZZLE_SPEED = PHYSICS.muzzleSpeed;
 export const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 export const GAME = {
-  numOpponents: 2,
+  numOpponents: 2,    // enemies at the start of a run
+  maxOpponents: 6,    // difficulty-ramp cap
+  rampKills: 3,       // every this many kills, spawn one more enemy
   aiCooldown: 2.2,    // AI fires slower than the player (1.1) — firepower edge to the human
   aiScatter: 0.10,    // baseline aim scatter (rad). Bigger = easier to dodge.
   aiFireTol: 0.035,   // aim tolerance (rad) before the AI pulls the trigger

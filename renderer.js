@@ -79,7 +79,8 @@ export class Renderer {
       const ch = this.scene.children[i];
       if (
         (ch.isShell && !state.shells.includes(ch)) ||
-        (ch.isEffect && !state.effects.includes(ch))
+        (ch.isEffect && !state.effects.includes(ch)) ||
+        (ch.isTank && !state.tanks.includes(ch))
       ) {
         this.scene.remove(ch);
       }
