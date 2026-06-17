@@ -9,7 +9,7 @@ function el(tag, cls, text) {
 }
 
 // Shown on the title, pause, and game-over overlays (and the in-play help).
-const CONTROLS = 'WASD drive/turn  ·  Q/E turret  ·  R/F aim  ·  SPACE fire  ·  P pause';
+const CONTROLS = 'WASD drive/turn  ·  Q/E turret  ·  R/F aim  ·  SPACE fire  ·  P/Esc pause';
 
 export class Hud {
   constructor(state, player, enemies, root = document.getElementById('hud')) {
