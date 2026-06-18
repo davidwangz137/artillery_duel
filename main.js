@@ -38,6 +38,18 @@ function main() {
   const state = new GameState(ARENA);
   const enemies = [];
 
+  // --- Pre-game config (persisted), toggled on the title screen. ---
+  let config;
+  try { config = JSON.parse(localStorage.getItem('artillery_config')) || {}; } catch (e) { config = {}; }
+  config = Object.assign({ enemyRespawn: true, aiBehavior: 'random' }, config);
+  const saveConfig = () => { try { localStorage.setItem('artillery_config', JSON.stringify(config)); } catch (e) {} };
+  const applyConfig = () => {
+    for (const e of enemies) {
+      e.autoRespawn = config.enemyRespawn;
+      state.controllers[e.tankId] = new AiController(config.aiBehavior);
+    }
+  };
+
   // --- Team pens: split the map along Z into TEAMS.count stripes separated by
   //     a no-man's-land, so opposing tanks can never close to point-blank. ---
   const pens = makeTeamPens(ARENA.half, TEAMS.buffer, TEAMS.count);
@@ -70,12 +82,13 @@ function main() {
       p.zMin + Math.random() * (p.zMax - p.zMin)
     );
     enemy.position.copy(enemy._spawn);
-    enemy.bodyYaw = Math.PI; // face the player
     enemy.fireCooldown = GAME.aiCooldown;
-    state.addTank(enemy, new AiController());
+    enemy.autoRespawn = config.enemyRespawn;
+    state.addTank(enemy, new AiController(config.aiBehavior));
     enemies.push(enemy);
   };
   for (let i = 0; i < GAME.numOpponents; i++) spawnEnemy();
+  applyConfig();
 
   renderer.init(state);
   const hud = new Hud(state, player, enemies);
@@ -84,10 +97,12 @@ function main() {
 
   let mode = MODE.TITLE;
   let score = 0;
+  let won = false;
   let best = parseInt(localStorage.getItem('artillery_best') || '0', 10) || 0;
 
   const resetGame = () => {
     score = 0;
+    won = false;
     state.shells.length = 0;
     state.explosions.length = 0;
     state.powerups.length = 0;
@@ -102,17 +117,20 @@ function main() {
       if (idx >= 0) state.tanks.splice(idx, 1);
     }
     for (const t of state.tanks) t.respawn();
+    applyConfig(); // reflect current respawn mode + AI behavior
     mode = MODE.PLAYING;
   };
 
-  // Title -> any key starts (and unlocks audio). P/Esc toggles pause during
-  // play. Game over -> Enter restarts. `e.repeat` ignores key autorepeat so
-  // holding P can't flicker pause/resume.
+  // Title screen: 1 toggles enemy respawn, 2 toggles AI behavior, Enter/Space
+  // starts. P/Esc toggles pause during play. Game over -> Enter restarts.
+  // `e.repeat` ignores key autorepeat so holding P can't flicker pause/resume.
   addEventListener('keydown', (e) => {
     if (e.repeat) return;
     if (mode === MODE.TITLE) {
       audio.unlockAudio();
-      mode = MODE.PLAYING;
+      if (e.code === 'Digit1') { config.enemyRespawn = !config.enemyRespawn; saveConfig(); }
+      else if (e.code === 'Digit2') { config.aiBehavior = config.aiBehavior === 'random' ? 'strategic' : 'random'; saveConfig(); }
+      else if (e.code === 'Enter' || e.code === 'Space') resetGame();
     } else if (mode === MODE.GAME_OVER) {
       if (e.code === 'Enter') resetGame();
     } else if (e.code === 'KeyP' || e.code === 'Escape') {
@@ -138,7 +156,8 @@ function main() {
         if (ev.type === 'hit' && ev.fatal && ev.by === 'player') {
           score += 1;
           // Difficulty ramp: every rampKills, add an enemy (up to the cap).
-          if (score % GAME.rampKills === 0 && enemies.length < GAME.maxOpponents) {
+          // Only in respawn (survival) mode — elimination mode must be clearable.
+          if (config.enemyRespawn && score % GAME.rampKills === 0 && enemies.length < GAME.maxOpponents) {
             spawnEnemy();
           }
         }
@@ -149,20 +168,23 @@ function main() {
           audio.impact(Math.max(0, 1 - d / 60));
         }
       }
-      // Player death ends the run (player never auto-respawns).
+      // End-of-run checks. Player death = loss. In elimination mode, clearing
+      // every enemy = win (they don't respawn).
       if (!player.alive) {
         mode = MODE.GAME_OVER;
-        if (score > best) {
-          best = score;
-          localStorage.setItem('artillery_best', String(best));
-        }
+        won = false;
+        if (score > best) { best = score; localStorage.setItem('artillery_best', String(best)); }
         audio.gameOver();
+      } else if (!config.enemyRespawn && enemies.length > 0 && enemies.every((e) => !e.alive)) {
+        mode = MODE.GAME_OVER;
+        won = true;
+        if (score > best) { best = score; localStorage.setItem('artillery_best', String(best)); }
       }
     }
 
     renderer.sync(state, player);
     renderer.render();
-    hud.update(state, { score, mode, best });
+    hud.update(state, { score, mode, best, won, config });
 
     requestAnimationFrame(loop);
   };

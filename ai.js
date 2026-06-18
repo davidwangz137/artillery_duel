@@ -40,8 +40,9 @@ function leadAndSolve(tank, target, V, g) {
 }
 
 export class AiController extends Controller {
-  constructor() {
+  constructor(behavior = 'random') {
     super();
+    this.behavior = behavior; // 'random' (wander/dodge) | 'strategic' (also flees cratered ground)
     // Scatter (re-rolled periodically so the AI commits to an aim, not jitter).
     this._scYaw = 0;
     this._scPitch = 0;
@@ -66,8 +67,7 @@ export class AiController extends Controller {
     if (dodge) {
       action.bodyTurn = dodge.bodyTurn;
       action.drive = dodge.drive;
-    } else {
-      const move = this._pursue(tank, target, dt);
+      const move = this._pursue(state, tank, target, dt);
       action.bodyTurn = move.bodyTurn;
       action.drive = move.drive;
     }
@@ -146,20 +146,50 @@ export class AiController extends Controller {
     return { bodyTurn: clamp(bodyErr / 0.12, -1, 1), drive: 1 };
   }
 
-  // Hold a preferred range from the target, face it, and weave laterally.
-  _pursue(tank, target, dt) {
+  // Hold a preferred range from the target, face it, and weave laterally. In
+  // 'strategic' mode, when standing on cratered ground, steer toward the
+  // lowest-damage nearby heading (escape the slow-down) instead.
+  _pursue(state, tank, target, dt) {
     if (!target) return { bodyTurn: 0, drive: 0 };
     this._weaveTimer -= dt;
     if (this._weaveTimer <= 0) {
       this._weaveTimer = 0.8 + Math.random() * 0.8;
       this._weave = (Math.random() - 0.5) * 0.5; // +-0.25 rad bias
     }
-    const toYaw = Math.atan2(target.position.x - tank.position.x, target.position.z - tank.position.z) + this._weave;
+    let toYaw = Math.atan2(target.position.x - tank.position.x, target.position.z - tank.position.z) + this._weave;
     const dist = Math.hypot(target.position.x - tank.position.x, target.position.z - tank.position.z);
     let drive = 0;
     if (dist > GAME.preferredRange + 4) drive = 1;
     else if (dist < GAME.preferredRange - 4) drive = -1;
+
+    if (this.behavior === 'strategic' && state.terrain) {
+      const avoid = this._terrainAvoidYaw(state, tank);
+      if (avoid !== null) {
+        toYaw = avoid; // prioritize reaching clean ground
+        drive = 1;
+      }
+    }
+
     const bodyErr = angleDiff(toYaw, tank.bodyYaw);
     return { bodyTurn: clamp(bodyErr / 0.25, -1, 1), drive };
+  }
+
+  // If the tank is on damaged ground, return the yaw toward the least-damaged
+  // nearby heading (8 samples); otherwise null.
+  _terrainAvoidYaw(state, tank) {
+    const R = 9;
+    const here = state.terrain.damageAt(tank.position.x, tank.position.z);
+    if (here < 0.15) return null;
+    let best = null;
+    let bestD = here;
+    for (let i = 0; i < 8; i++) {
+      const yaw = (i / 8) * Math.PI * 2;
+      const d = state.terrain.damageAt(tank.position.x + Math.sin(yaw) * R, tank.position.z + Math.cos(yaw) * R);
+      if (d < bestD) {
+        bestD = d;
+        best = yaw;
+      }
+    }
+    return best;
   }
 }

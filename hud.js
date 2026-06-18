@@ -45,7 +45,7 @@ export class Hud {
     return { row, fill, hp: row.querySelector('.bar-hp') };
   }
 
-  update(state, { score, mode, best }) {
+  update(state, { score, mode, best, won = false, config = null }) {
     this._setHp(this.playerBar, this.player);
     const alive = this.enemies.filter((e) => e.alive).length;
     this.stats.textContent = `SCORE ${score}   ·   ENEMIES ${alive}/${this.enemies.length}`;
@@ -80,15 +80,17 @@ export class Hud {
     this.status.textContent = '';
     if (mode === 'title') {
       this.overlayTitle.textContent = 'ARTILLERY DUEL';
-      this.overlayScore.textContent = '';
-      this.overlayHint.textContent = 'Press any key to start';
+      const respawn = config ? (config.enemyRespawn ? 'ON' : 'OFF') : 'ON';
+      const ai = config ? config.aiBehavior : 'random';
+      this.overlayScore.textContent = `[1] Enemy respawn: ${respawn}   ·   [2] AI: ${ai}`;
+      this.overlayHint.textContent = 'Press ENTER to start';
     } else if (mode === 'paused') {
       this.overlayTitle.textContent = 'PAUSED';
       this.overlayScore.textContent = `Score ${score}   ·   Best ${best}`;
       this.overlayHint.textContent = 'Press P to resume';
     } else {
       // game_over
-      this.overlayTitle.textContent = 'GAME OVER';
+      this.overlayTitle.textContent = won ? 'VICTORY!' : 'GAME OVER';
       this.overlayScore.textContent = `Final score: ${score}   ·   Best: ${best}`;
       this.overlayHint.textContent = 'Press ENTER to restart';
     }

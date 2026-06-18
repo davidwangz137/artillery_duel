@@ -55,7 +55,8 @@ export class HumanController extends Controller {
     this.keys = keys;
     this.mouseAim = false;
     this._ndc = null; // cursor in normalized device coords
-    this._installMouse();
+    this._mouseFire = false; // left mouse button held -> fire
+    this._installMouse(); // register mouse + M-key listeners
   }
 
   _installMouse() {
@@ -65,6 +66,8 @@ export class HumanController extends Controller {
         y: -((e.clientY / innerHeight) * 2 - 1),
       };
     });
+    addEventListener('mousedown', (e) => { if (e.button === 0) this._mouseFire = true; });
+    addEventListener('mouseup', (e) => { if (e.button === 0) this._mouseFire = false; });
     addEventListener('keydown', (e) => {
       if (e.repeat) return;
       if (e.code === 'KeyM') this.mouseAim = !this.mouseAim;
@@ -90,7 +93,7 @@ export class HumanController extends Controller {
       drive: (i.isDown(k.fwd) ? 1 : 0) + (i.isDown(k.back) ? -1 : 0),
       turretYaw: 0,
       turretPitch: 0,
-      fire: i.isDown(k.fire),
+      fire: i.isDown(k.fire) || this._mouseFire,
     };
 
     // Mouse aim (optional, toggled with M): slew turret toward the cursor's
