@@ -90,6 +90,7 @@ function main() {
     score = 0;
     state.shells.length = 0;
     state.effects.length = 0;
+    if (state.terrain) state.terrain.reset(); // fresh field each run
     // Trim any ramp-spawned enemies back to the starting roster.
     while (enemies.length > GAME.numOpponents) {
       const e = enemies.pop();

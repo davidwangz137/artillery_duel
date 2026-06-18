@@ -1,6 +1,7 @@
 import { GRAVITY, COMBAT, SHELL, COLORS, TANK } from './constants.js';
 import { Shell } from './shell.js';
 import { Effect } from './effect.js';
+import { Terrain } from './terrain.js';
 
 // GameState is the single source of truth for the world. It owns all tanks,
 // shells, and effects, and advances everything one tick at a time via step(dt).
@@ -26,6 +27,7 @@ export class GameState {
     this.effects = [];
     this.controllers = {}; // tank.tankId -> Controller
     this.events = []; // reset each tick; consumed by HUD / AI observers
+    this.terrain = new Terrain(arena); // ground damage grid (slows tanks; endgame pressure)
     this.time = 0;
   }
 
@@ -80,6 +82,7 @@ export class GameState {
       if (!s.alive && !s._impacted && s.position.y <= SHELL.radius + 0.05) {
         s._impacted = true;
         this.spawnImpact(s.position);
+        this.terrain.applyImpact(s.position.x, s.position.z);
         this.events.push({ type: 'impact', x: s.position.x, y: s.position.y, z: s.position.z });
       }
     }
@@ -98,7 +101,8 @@ export class GameState {
           t.takeDamage(COMBAT.hitDamage);
           s.alive = false;
           s._impacted = true;
-          this.spawnImpact(s.position);
+        this.spawnImpact(s.position);
+        this.terrain.applyImpact(s.position.x, s.position.z);
           this.events.push({
             type: 'hit',
             target: t.tankId,

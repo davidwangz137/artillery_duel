@@ -3,6 +3,7 @@ import {
   ARENA,
   TANK,
   COMBAT,
+  TERRAIN,
   RESPAWN,
   MUZZLE_SPEED,
   clamp,
@@ -101,8 +102,10 @@ export class Tank extends THREE.Group {
     _oldPos.copy(this.position);
     const fwdX = Math.sin(this.bodyYaw);
     const fwdZ = Math.cos(this.bodyYaw);
-    this.position.x += fwdX * a.drive * TANK.driveSpeed * dt;
-    this.position.z += fwdZ * a.drive * TANK.driveSpeed * dt;
+    const terrainDmg = state.terrain ? state.terrain.damageAt(this.position.x, this.position.z) : 0;
+    const speedMul = 1 - TERRAIN.slowFactor * terrainDmg;
+    this.position.x += fwdX * a.drive * TANK.driveSpeed * speedMul * dt;
+    this.position.z += fwdZ * a.drive * TANK.driveSpeed * speedMul * dt;
     // Clamp to this tank's pen (its team's region) — or the arena if unset.
     const p = this.pen || { xMin: -ARENA.half + 1.5, xMax: ARENA.half - 1.5, zMin: -ARENA.half + 1.5, zMax: ARENA.half - 1.5 };
     this.position.x = clamp(this.position.x, p.xMin, p.xMax);

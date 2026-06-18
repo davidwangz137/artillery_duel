@@ -40,6 +40,7 @@ export class Renderer {
       new THREE.MeshStandardMaterial({ color: COLORS.ground, roughness: 1 })
     );
     ground.rotation.x = -Math.PI / 2;
+    this.ground = ground;
     this.scene.add(ground);
 
     const grid = new THREE.GridHelper(size, size / 4, COLORS.gridMain, COLORS.gridSub);
@@ -74,9 +75,16 @@ export class Renderer {
 
   init(state) {
     for (const t of state.tanks) this.scene.add(t);
+    // Paint ground damage via the terrain's canvas texture.
+    if (state.terrain) {
+      this.ground.material.map = state.terrain.texture;
+      this.ground.material.color.setHex(0xffffff);
+      this.ground.material.needsUpdate = true;
+    }
   }
 
   sync(state, aimTank) {
+    if (state.terrain) state.terrain.update();
     // Add any new tanks/shells/effects that aren't in the scene yet.
     for (const t of state.tanks) if (!t.parent) this.scene.add(t);
     for (const s of state.shells) if (!s.parent) this.scene.add(s);

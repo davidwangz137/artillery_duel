@@ -42,6 +42,13 @@ export const TEAMS = {
   count: 2,   // number of teams (pens split the map along Z)
 };
 
+export const TERRAIN = {
+  resolution: 128,   // damage grid cells per side
+  blastRadius: 5.5,  // world units; shell impacts crater within this radius
+  blastAmount: 0.55, // damage added at the center of a blast (gaussian falloff)
+  slowFactor: 0.75,  // at full damage, drive speed is multiplied by (1 - slowFactor)
+};
+
 export const RESPAWN = {
   delay: 2.5,        // seconds before a destroyed tank reappears
 };
