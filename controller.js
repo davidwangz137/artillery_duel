@@ -53,7 +53,7 @@ export class HumanController extends Controller {
     this.input = input;
     this.camera = camera;
     this.keys = keys;
-    this.mouseAim = false;
+    this.mouseAim = true; // mouse aim on by default (M toggles it off)
     this._ndc = null; // cursor in normalized device coords
     this._mouseFire = false; // left mouse button held -> fire
     this._installMouse(); // register mouse + M-key listeners
