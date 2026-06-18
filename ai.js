@@ -18,49 +18,10 @@ import {
   GRAVITY,
   clamp,
 } from './constants.js';
+import { angleDiff, solveAt } from './ballistics.js';
 
 const G_MAG = -GRAVITY; // gravity magnitude (positive)
 
-// Normalize an angle difference to [-PI, PI].
-function angleDiff(a, b) {
-  let d = a - b;
-  while (d > Math.PI) d -= 2 * Math.PI;
-  while (d < -Math.PI) d += 2 * Math.PI;
-  return d;
-}
-
-// Projectile launch angle to hit `target` from `muzzle` at speed V under
-// gravity g (magnitude). Returns { yaw, pitch } (low arc) or null if the
-// target is out of range.
-function firingSolution(muzzle, target, V, g) {
-  const dx = target.x - muzzle.x;
-  const dz = target.z - muzzle.z;
-  const D = Math.hypot(dx, dz);
-  if (D < 1e-3) {
-    return { yaw: 0, pitch: TANK.pitchMax };
-  }
-  const yaw = Math.atan2(dx, dz); // forward = (sin yaw, cos yaw)
-  const dh = target.y - muzzle.y;
-  const disc = V * V * V * V - g * (g * D * D + 2 * dh * V * V);
-  if (disc < 0) return null; // unreachable
-  const sq = Math.sqrt(disc);
-  const pitch = Math.atan((V * V - sq) / (g * D)); // low arc
-  return { yaw, pitch };
-}
-
-// Solve with a refined muzzle position (accounts for barrel raise/forward).
-function solveAt(tank, aim, V, g) {
-  const pivot = { x: tank.position.x, y: tank.position.y + TANK.muzzleHeight, z: tank.position.z };
-  const s1 = firingSolution(pivot, aim, V, g);
-  if (!s1) return null;
-  const dir = {
-    x: Math.cos(s1.pitch) * Math.sin(s1.yaw),
-    y: Math.sin(s1.pitch),
-    z: Math.cos(s1.pitch) * Math.cos(s1.yaw),
-  };
-  const muzzle = { x: pivot.x + dir.x * TANK.muzzleForward, y: pivot.y + dir.y * TANK.muzzleForward, z: pivot.z + dir.z * TANK.muzzleForward };
-  return firingSolution(muzzle, aim, V, g) || s1;
-}
 
 // Solve while leading the target by its velocity. Two passes.
 function leadAndSolve(tank, target, V, g) {

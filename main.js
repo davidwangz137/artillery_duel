@@ -50,7 +50,7 @@ function main() {
   player._spawn.set(0, 0, pens[0].zMin * 0.7); // deep in their own pen
   player.position.copy(player._spawn);
   player.bodyYaw = 0; // face +Z, toward the enemy pen
-  state.addTank(player, new HumanController(input));
+  state.addTank(player, new HumanController(input, renderer.camera));
 
   // --- AI opponents on team 1. spawnEnemy() is reused by the difficulty ramp,
   //     so the roster grows as the player scores. ---

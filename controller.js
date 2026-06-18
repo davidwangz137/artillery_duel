@@ -1,3 +1,7 @@
+import * as THREE from 'three';
+import { MUZZLE_SPEED, GRAVITY, clamp } from './constants.js';
+import { angleDiff, firingSolutionClamped } from './ballistics.js';
+
 // Controllers turn intent into Actions. A Controller is the ONLY thing that
 // decides what a tank tries to do each frame.
 //
@@ -44,21 +48,70 @@ const DEFAULT_KEYS = {
 };
 
 export class HumanController extends Controller {
-  constructor(input, keys = DEFAULT_KEYS) {
+  constructor(input, camera = null, keys = DEFAULT_KEYS) {
     super();
     this.input = input;
+    this.camera = camera;
     this.keys = keys;
+    this.mouseAim = false;
+    this._ndc = null; // cursor in normalized device coords
+    this._installMouse();
+  }
+
+  _installMouse() {
+    addEventListener('mousemove', (e) => {
+      this._ndc = {
+        x: (e.clientX / innerWidth) * 2 - 1,
+        y: -((e.clientY / innerHeight) * 2 - 1),
+      };
+    });
+    addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      if (e.code === 'KeyM') this.mouseAim = !this.mouseAim;
+    });
+  }
+
+  // Unproject the cursor through the camera onto the ground plane (y = 0).
+  _groundPoint() {
+    if (!this.camera || !this._ndc) return null;
+    const cam = this.camera;
+    const v = new THREE.Vector3(this._ndc.x, this._ndc.y, 0.5).unproject(cam);
+    const dir = v.sub(cam.position).normalize();
+    if (dir.y >= -1e-3) return null; // cursor at/above the horizon: no aim
+    const t = -cam.position.y / dir.y;
+    return new THREE.Vector3(cam.position.x + dir.x * t, 0, cam.position.z + dir.z * t);
   }
 
   getAction(state, tank) {
     const k = this.keys;
     const i = this.input;
-    return {
+    const action = {
       bodyTurn: (i.isDown(k.left) ? 1 : 0) + (i.isDown(k.right) ? -1 : 0),
       drive: (i.isDown(k.fwd) ? 1 : 0) + (i.isDown(k.back) ? -1 : 0),
-      turretYaw: (i.isDown(k.turretLeft) ? 1 : 0) + (i.isDown(k.turretRight) ? -1 : 0),
-      turretPitch: (i.isDown(k.pitchUp) ? 1 : 0) + (i.isDown(k.pitchDown) ? -1 : 0),
+      turretYaw: 0,
+      turretPitch: 0,
       fire: i.isDown(k.fire),
     };
+
+    // Mouse aim (optional, toggled with M): slew turret toward the cursor's
+    // ground point, clamped to max range. The arc preview always shows the
+    // tank's real current aim, which lags the cursor at the turret turn rate.
+    let aimed = false;
+    if (this.mouseAim) {
+      const g = this._groundPoint();
+      if (g) {
+        const sol = firingSolutionClamped(tank, g, MUZZLE_SPEED, -GRAVITY);
+        action.turretYaw = clamp(angleDiff(sol.yaw, tank.aimYaw) / 0.03, -1, 1);
+        action.turretPitch = clamp((sol.pitch - tank.pitch) / 0.03, -1, 1);
+        aimed = true;
+      }
+    }
+    if (!aimed) {
+      action.turretYaw = (i.isDown(k.turretLeft) ? 1 : 0) + (i.isDown(k.turretRight) ? -1 : 0);
+      action.turretPitch = (i.isDown(k.pitchUp) ? 1 : 0) + (i.isDown(k.pitchDown) ? -1 : 0);
+    }
+
+    tank.mouseAim = this.mouseAim && aimed;
+    return action;
   }
 }

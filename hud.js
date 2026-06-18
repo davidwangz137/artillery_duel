@@ -9,7 +9,7 @@ function el(tag, cls, text) {
 }
 
 // Shown on the title, pause, and game-over overlays (and the in-play help).
-const CONTROLS = 'WASD drive/turn  ·  Q/E turret  ·  R/F aim  ·  SPACE fire  ·  P/Esc pause';
+const CONTROLS = 'WASD drive/turn  ·  Q/E turret  ·  R/F aim  ·  SPACE fire  ·  P/Esc pause  ·  M mouse-aim';
 
 export class Hud {
   constructor(state, player, enemies, root = document.getElementById('hud')) {
@@ -17,7 +17,7 @@ export class Hud {
     this.player = player;
     this.enemies = enemies;
 
-    root.appendChild(el('div', 'help', CONTROLS));
+    this.help = root.appendChild(el('div', 'help', CONTROLS));
 
     this.bars = root.appendChild(el('div', 'bars'));
     this.playerBar = this._bar('YOU', '#4a90d9');
@@ -44,6 +44,7 @@ export class Hud {
 
   update(state, { score, mode, best }) {
     this._setHp(this.playerBar, this.player);
+    this.help.textContent = CONTROLS + '  ·  AIM ' + (this.player.mouseAim ? 'mouse' : 'keys');
 
     const alive = this.enemies.filter((e) => e.alive).length;
     this.stats.textContent = `SCORE ${score}   ·   ENEMIES ${alive}/${this.enemies.length}`;
