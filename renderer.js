@@ -13,11 +13,11 @@ export class Renderer {
   constructor(canvas) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(COLORS.sky);
-    this.scene.fog = new THREE.Fog(COLORS.sky, 110, 230);
+    this.scene.fog = new THREE.Fog(COLORS.sky, ARENA.half * 3.5, ARENA.half * 7);
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
     // Shared angled/overhead view of the whole arena.
-    this.camera.position.set(0, 60, 66);
+    this.camera.position.set(0, ARENA.half * 1.9, ARENA.half * 2.05);
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -25,7 +25,7 @@ export class Renderer {
 
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x4a3f2a, 0.95));
     const dir = new THREE.DirectionalLight(0xffffff, 1.05);
-    dir.position.set(40, 80, 30);
+    dir.position.set(ARENA.half * 1.3, ARENA.half * 2.6, ARENA.half * 0.9);
     this.scene.add(dir);
 
     this._buildGround();
@@ -42,7 +42,7 @@ export class Renderer {
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground);
 
-    const grid = new THREE.GridHelper(size, 16, COLORS.gridMain, COLORS.gridSub);
+    const grid = new THREE.GridHelper(size, size / 4, COLORS.gridMain, COLORS.gridSub);
     grid.position.y = 0.02;
     this.scene.add(grid);
   }

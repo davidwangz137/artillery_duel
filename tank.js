@@ -40,6 +40,7 @@ export class Tank extends THREE.Group {
     this.autoRespawn = true;                 // player sets this false (game over on death)
 
     this._build(color);
+    this.scale.setScalar(TANK.scale); // shrink the model relative to the world
   }
 
   _build(color) {
@@ -83,8 +84,8 @@ export class Tank extends THREE.Group {
   }
 
   muzzlePosition(out = _muzzle) {
-    out.set(this.position.x, this.position.y + 1.55, this.position.z);
-    out.addScaledVector(this.aimDirection(), this._muzzleForward);
+    out.set(this.position.x, this.position.y + TANK.muzzleHeight, this.position.z);
+    out.addScaledVector(this.aimDirection(), TANK.muzzleForward);
     return out;
   }
 

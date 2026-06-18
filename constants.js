@@ -1,11 +1,14 @@
 // Central tunables. Keep all gameplay numbers here so balancing is one-file.
 // Coordinate system: XZ is the ground plane, +Y is up.
 
-export const ARENA = { half: 32 }; // square arena, edge length = half*2 (64 units)
+// Global tank model scale (<1 = smaller tanks relative to the world).
+const TANK_SCALE = 0.85;
+
+export const ARENA = { half: 64 }; // square arena, edge length = half*2 (128 units)
 
 export const PHYSICS = {
   gravity: -20,      // y-acceleration on shells (units/s^2). Negative = down.
-  muzzleSpeed: 36,   // shell launch speed (units/s). ~2.5s flight at 45°, slow & dodgeable.
+  muzzleSpeed: 48,   // shell launch speed (units/s). max range V^2/g ~= 115 across the bigger field.
 };
 
 export const SHELL = {
@@ -17,16 +20,21 @@ export const COMBAT = {
   maxHp: 100,
   hitDamage: 25,     // 4 hits to kill
   fireCooldown: 1.1, // seconds between shots
-  tankRadius: 2.0,   // collision sphere radius (approx for box tank)
+  tankRadius: 2.0 * TANK_SCALE, // collision sphere radius (scales with tank model)
 };
 
 export const TANK = {
-  driveSpeed: 13,    // units/s
-  bodyTurnSpeed: 1.9,// rad/s
+  scale: TANK_SCALE,         // applied to the tank model group
+  driveSpeed: 18,            // units/s (bumped for the larger arena)
+  bodyTurnSpeed: 1.9,        // rad/s
   turretYawSpeed: 1.7,
   turretPitchSpeed: 1.0,
-  pitchMin: 0.06,    // rad above horizontal
+  pitchMin: 0.06,            // rad above horizontal
   pitchMax: Math.PI / 2 - 0.06,
+  // Logical offsets used by aim/collision math (pre-scaled to match the model).
+  muzzleHeight: 1.55 * TANK_SCALE,
+  muzzleForward: 2.4 * TANK_SCALE,
+  bodyCenterY: 1.0 * TANK_SCALE,
 };
 
 export const RESPAWN = {
@@ -59,5 +67,5 @@ export const GAME = {
   aiCooldown: 2.2,    // AI fires slower than the player (1.1) — firepower edge to the human
   aiScatter: 0.10,    // baseline aim scatter (rad). Bigger = easier to dodge.
   aiFireTol: 0.035,   // aim tolerance (rad) before the AI pulls the trigger
-  preferredRange: 24, // distance the AI tries to keep from its target
+  preferredRange: 42, // distance the AI tries to keep from its target
 };

@@ -1,4 +1,4 @@
-import { GRAVITY, COMBAT, SHELL, COLORS } from './constants.js';
+import { GRAVITY, COMBAT, SHELL, COLORS, TANK } from './constants.js';
 import { Shell } from './shell.js';
 import { Effect } from './effect.js';
 
@@ -89,7 +89,7 @@ export class GameState {
       if (!s.alive) continue;
       for (const t of this.tanks) {
         if (!t.alive || s.ownerId === t.tankId) continue;
-        const cy = t.position.y + 1.0;
+        const cy = t.position.y + TANK.bodyCenterY;
         const dx = s.position.x - t.position.x;
         const dy = s.position.y - cy;
         const dz = s.position.z - t.position.z;

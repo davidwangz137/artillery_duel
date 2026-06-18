@@ -50,7 +50,7 @@ function firingSolution(muzzle, target, V, g) {
 
 // Solve with a refined muzzle position (accounts for barrel raise/forward).
 function solveAt(tank, aim, V, g) {
-  const pivot = { x: tank.position.x, y: tank.position.y + 1.55, z: tank.position.z };
+  const pivot = { x: tank.position.x, y: tank.position.y + TANK.muzzleHeight, z: tank.position.z };
   const s1 = firingSolution(pivot, aim, V, g);
   if (!s1) return null;
   const dir = {
@@ -58,13 +58,13 @@ function solveAt(tank, aim, V, g) {
     y: Math.sin(s1.pitch),
     z: Math.cos(s1.pitch) * Math.cos(s1.yaw),
   };
-  const muzzle = { x: pivot.x + dir.x * 2.4, y: pivot.y + dir.y * 2.4, z: pivot.z + dir.z * 2.4 };
+  const muzzle = { x: pivot.x + dir.x * TANK.muzzleForward, y: pivot.y + dir.y * TANK.muzzleForward, z: pivot.z + dir.z * TANK.muzzleForward };
   return firingSolution(muzzle, aim, V, g) || s1;
 }
 
 // Solve while leading the target by its velocity. Two passes.
 function leadAndSolve(tank, target, V, g) {
-  const pivot = { x: tank.position.x, y: tank.position.y + 1.55, z: tank.position.z };
+  const pivot = { x: tank.position.x, y: tank.position.y + TANK.muzzleHeight, z: tank.position.z };
   const sol = solveAt(tank, target.position, V, g);
   if (!sol) return null;
   // Estimate flight time with the low arc, then predict where the target goes.
