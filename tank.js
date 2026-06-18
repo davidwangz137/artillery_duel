@@ -37,6 +37,7 @@ export class Tank extends THREE.Group {
     this.alive = true;
     this.respawnTimer = 0;
     this._spawn = new THREE.Vector3(); // set by the spawner; used on respawn
+    this.fireCooldown = COMBAT.fireCooldown; // per-tank shot cooldown (AI overrides to shoot slower)
     this.autoRespawn = true;                 // player sets this false (game over on death)
     this.team = 0;                           // team id; enemies are tanks on other teams
     this.pen = null;                         // {xMin,xMax,zMin,zMax} movement bounds (set by spawner)

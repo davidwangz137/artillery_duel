@@ -4,6 +4,28 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Artillery Duel</title>
+  <script>
+    // Surface any client-side runtime error on-screen (the game runs in the
+    // browser, so server logs can't see freezes). Without this a thrown error
+    // just silently kills the render loop.
+    window.addEventListener('error', (e) => showError((e.error && e.error.stack) || e.message));
+    window.addEventListener('unhandledrejection', (e) =>
+      showError('Promise: ' + ((e.reason && (e.reason.stack || e.reason.message)) || e.reason))
+    );
+    function showError(msg) {
+      let b = document.getElementById('__err');
+      if (!b) {
+        b = document.createElement('div');
+        b.id = '__err';
+        b.style.cssText =
+          'position:fixed;left:8px;bottom:8px;max-width:62vw;max-height:46vh;overflow:auto;' +
+          'background:#7a1a1a;color:#ffe;border:1px solid #f88;font:12px/1.4 monospace;' +
+          'padding:8px 10px;z-index:9999;white-space:pre-wrap;border-radius:4px';
+        document.body.appendChild(b);
+      }
+      b.textContent += msg + '\n\n';
+    }
+  </script>
   <style>
     html, body {
       margin: 0;
