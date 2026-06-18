@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ARENA, COLORS, GAME } from './constants.js';
+import { ARENA, COLORS, GAME, TEAMS } from './constants.js';
 import { GameState } from './gamestate.js';
 import { Renderer } from './renderer.js';
 import { Tank } from './tank.js';
@@ -14,6 +14,22 @@ import * as audio from './audio.js';
 // advances the world, renderer draws it.
 
 const MODE = { TITLE: 'title', PLAYING: 'playing', PAUSED: 'paused', GAME_OVER: 'game_over' };
+
+// Split the arena into `count` Z-stripes with a 2*buffer no-man's-land between
+// adjacent pens. Each pen keeps a team penned in, so opposing tanks can never
+// close to point-blank (the "too close to aim" tie).
+function makeTeamPens(half, buffer, count) {
+  const margin = 1.5;
+  const gap = 2 * buffer;
+  const stripe = (2 * half - (count - 1) * gap) / count;
+  const pens = [];
+  for (let i = 0; i < count; i++) {
+    const zMin = -half + i * (stripe + gap);
+    const zMax = zMin + stripe;
+    pens.push({ xMin: -half + margin, xMax: half - margin, zMin: zMin + margin, zMax: zMax - margin });
+  }
+  return pens;
+}
 function main() {
   const canvas = document.getElementById('game');
   const renderer = new Renderer(canvas);
@@ -22,16 +38,22 @@ function main() {
   const state = new GameState(ARENA);
   const enemies = [];
 
-  // --- Player (human). autoRespawn=false: death ends the run. ---
+  // --- Team pens: split the map along Z into TEAMS.count stripes separated by
+  //     a no-man's-land, so opposing tanks can never close to point-blank. ---
+  const pens = makeTeamPens(ARENA.half, TEAMS.buffer, TEAMS.count);
+
+  // --- Player (human) on team 0. autoRespawn=false: death ends the run. ---
   const player = new Tank({ id: 'player', color: COLORS.player, name: 'You' });
   player.autoRespawn = false;
-  player._spawn.set(0, 0, -ARENA.half * 0.7);
+  player.team = 0;
+  player.pen = pens[0];
+  player._spawn.set(0, 0, pens[0].zMin * 0.7); // deep in their own pen
   player.position.copy(player._spawn);
-  player.bodyYaw = 0;
+  player.bodyYaw = 0; // face +Z, toward the enemy pen
   state.addTank(player, new HumanController(input));
 
-  // --- AI opponents. Each is a Tank + an AiController. spawnEnemy() is reused
-  //     by the difficulty ramp, so the roster grows as the player scores. ---
+  // --- AI opponents on team 1. spawnEnemy() is reused by the difficulty ramp,
+  //     so the roster grows as the player scores. ---
   const spawnEnemy = () => {
     const i = enemies.length;
     const enemy = new Tank({
@@ -39,9 +61,14 @@ function main() {
       color: COLORS.enemyPalette[i % COLORS.enemyPalette.length],
       name: `Enemy ${i + 1}`,
     });
-    const x = (Math.random() * 2 - 1) * ARENA.half * 0.8;
-    const z = ARENA.half * (0.3 + Math.random() * 0.55);
-    enemy._spawn.set(x, 0, z);
+    enemy.team = 1;
+    enemy.pen = pens[1];
+    const p = pens[1];
+    enemy._spawn.set(
+      p.xMin + Math.random() * (p.xMax - p.xMin),
+      0,
+      p.zMin + Math.random() * (p.zMax - p.zMin)
+    );
     enemy.position.copy(enemy._spawn);
     enemy.bodyYaw = Math.PI; // face the player
     enemy.fireCooldown = GAME.aiCooldown;

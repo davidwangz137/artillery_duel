@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ARENA, COLORS, GRAVITY, MUZZLE_SPEED } from './constants.js';
+import { ARENA, COLORS, GRAVITY, MUZZLE_SPEED, TEAMS } from './constants.js';
 
 // Owns everything visual: the THREE scene, camera, lights, ground, and the
 // aim-trajectory preview. It reads from GameState each frame (sync) and draws.
@@ -45,6 +45,14 @@ export class Renderer {
     const grid = new THREE.GridHelper(size, size / 4, COLORS.gridMain, COLORS.gridSub);
     grid.position.y = 0.02;
     this.scene.add(grid);
+    // No-man's-land strip between the two team pens (visual boundary).
+    const nml = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, TEAMS.buffer * 2),
+      new THREE.MeshStandardMaterial({ color: COLORS.nomansland, roughness: 1 })
+    );
+    nml.rotation.x = -Math.PI / 2;
+    nml.position.set(0, 0.03, 0);
+    this.scene.add(nml);
   }
 
   // Dashed predicted-arc line for the player's current aim.

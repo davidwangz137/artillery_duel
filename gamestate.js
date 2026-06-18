@@ -126,6 +126,19 @@ export class GameState {
   enemiesOf(id) {
     return this.tanks.filter((t) => t.tankId !== id);
   }
+  // Nearest alive tank on a different team (for AI targeting / future FFA).
+  nearestEnemy(tank) {
+    let best = null;
+    let bd = Infinity;
+    for (const t of this.tanks) {
+      if (t === tank || !t.alive || t.team === tank.team) continue;
+      const dx = t.position.x - tank.position.x;
+      const dz = t.position.z - tank.position.z;
+      const d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; best = t; }
+    }
+    return best;
+  }
   incomingShells(id) {
     return this.shells.filter((s) => s.ownerId !== id);
   }

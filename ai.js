@@ -98,7 +98,7 @@ export class AiController extends Controller {
     const action = { bodyTurn: 0, drive: 0, turretYaw: 0, turretPitch: 0, fire: false };
     if (!tank.alive) return action;
 
-    const target = state.tankById('player');
+    const target = state.nearestEnemy(tank); // any tank on a different team
 
     // --- Movement: dodge an incoming shell, else hold range + weave. ---
     const dodge = this._dodge(state, tank, dt);

@@ -37,6 +37,11 @@ export const TANK = {
   bodyCenterY: 1.0 * TANK_SCALE,
 };
 
+export const TEAMS = {
+  buffer: 10, // half-width of the no-man's-land between team pens (guarantees min separation)
+  count: 2,   // number of teams (pens split the map along Z)
+};
+
 export const RESPAWN = {
   delay: 2.5,        // seconds before a destroyed tank reappears
 };
@@ -44,6 +49,7 @@ export const RESPAWN = {
 export const COLORS = {
   sky: 0x9fd3ff,
   ground: 0x4a7a44,
+  nomansland: 0x7a6a44, // the strip between team pens (uncrossable)
   gridMain: 0x2f4f2c,
   gridSub: 0x5d7d56,
   player: 0x4a90d9,

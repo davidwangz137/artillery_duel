@@ -38,6 +38,8 @@ export class Tank extends THREE.Group {
     this._spawn = new THREE.Vector3(); // set by the spawner; used on respawn
     this.fireCooldown = COMBAT.fireCooldown; // per-tank (AI shoots slower)
     this.autoRespawn = true;                 // player sets this false (game over on death)
+    this.team = 0;                           // team id; enemies are tanks on other teams
+    this.pen = null;                         // {xMin,xMax,zMin,zMax} movement bounds (set by spawner)
 
     this._build(color);
     this.scale.setScalar(TANK.scale); // shrink the model relative to the world
@@ -101,10 +103,10 @@ export class Tank extends THREE.Group {
     const fwdZ = Math.cos(this.bodyYaw);
     this.position.x += fwdX * a.drive * TANK.driveSpeed * dt;
     this.position.z += fwdZ * a.drive * TANK.driveSpeed * dt;
-    // Clamp to arena bounds.
-    const lim = ARENA.half - 1.5;
-    this.position.x = clamp(this.position.x, -lim, lim);
-    this.position.z = clamp(this.position.z, -lim, lim);
+    // Clamp to this tank's pen (its team's region) — or the arena if unset.
+    const p = this.pen || { xMin: -ARENA.half + 1.5, xMax: ARENA.half - 1.5, zMin: -ARENA.half + 1.5, zMax: ARENA.half - 1.5 };
+    this.position.x = clamp(this.position.x, p.xMin, p.xMax);
+    this.position.z = clamp(this.position.z, p.zMin, p.zMax);
     // Observed velocity (for AI target-leading).
     const inv = 1 / Math.max(dt, 1e-4);
     this.velocity.set((this.position.x - _oldPos.x) * inv, 0, (this.position.z - _oldPos.z) * inv);
