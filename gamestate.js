@@ -1,33 +1,47 @@
-import { GRAVITY, COMBAT, SHELL, COLORS, TANK } from './constants.js';
+import {
+  GRAVITY,
+  COMBAT,
+  SHELL,
+  COLORS,
+  TANK,
+  TERRAIN,
+  EXPLOSION,
+  POWERUPS,
+} from './constants.js';
 import { Shell } from './shell.js';
 import { Effect } from './effect.js';
 import { Terrain } from './terrain.js';
+import { Explosion } from './explosion.js';
+import { Powerup } from './powerup.js';
 
 // GameState is the single source of truth for the world. It owns all tanks,
-// shells, and effects, and advances everything one tick at a time via step(dt).
+// shells, explosions, powerups, effects, and terrain, and advances everything
+// via step(dt).
 //
-// QUERYING (for future AI): controllers receive `state` and may read whatever
-// they need directly. Key fields:
-//   state.tanks     -> [{ id, position, velocity, hp, maxHp, bodyYaw, aimYaw,
-//                         pitch, cooldown, alive, respawnTimer }]
-//   state.shells    -> [{ position, velocity, ownerId, alive }]
-//   state.arena     -> { half }
-//   state.time      -> seconds elapsed
-//   state.events    -> [{type:'hit', target, by, damage, fatal}] from last tick
-// Plus the helper methods at the bottom.
+// QUERYING (for future AI/controllers):
+//   state.tanks       -> live tank objects
+//   state.shells      -> live shell objects
+//   state.explosions  -> expanding AoE hit windows / visuals
+//   state.powerups    -> pickups in team pens
+//   state.terrain     -> damage grid + texture + damageAt(x,z)
+//   state.events      -> per-tick { fire | impact | hit | respawn | pickup }
+//   state.time        -> seconds elapsed in the current run
 //
-// This object does NOT render anything and does not read input — it is pure
-// simulation. The Renderer draws it; Controllers feed it Actions.
+// This object does NOT render anything and does not read raw input — it is
+// pure simulation. The Renderer draws it; Controllers feed it Actions.
 
 export class GameState {
   constructor(arena) {
     this.arena = arena; // { half }
     this.tanks = [];
     this.shells = [];
+    this.explosions = [];
+    this.powerups = [];
     this.effects = [];
     this.controllers = {}; // tank.tankId -> Controller
-    this.events = []; // reset each tick; consumed by HUD / AI observers
-    this.terrain = new Terrain(arena); // ground damage grid (slows tanks; endgame pressure)
+    this.events = []; // reset each tick; consumed by HUD / audio observers
+    this.terrain = new Terrain(arena);
+    this.nextPowerupAt = new Map(); // team id -> next spawn time
     this.time = 0;
   }
 
@@ -36,24 +50,92 @@ export class GameState {
     this.controllers[tank.tankId] = controller;
   }
 
-  spawnShell(pos, vel, ownerId) {
-    const s = new Shell(pos, vel, ownerId);
+  spawnShell(pos, vel, ownerId, blastScale = 1) {
+    const s = new Shell(pos, vel, ownerId, blastScale);
     this.shells.push(s);
     this.events.push({ type: 'fire', by: ownerId });
     return s;
   }
 
-  spawnImpact(pos, color = COLORS.impact) {
-    this.effects.push(new Effect({ pos: pos.clone(), color, ttl: 0.45, kind: 'impact' }));
+  spawnExplosion(pos, ownerId, blastScale = 1) {
+    const ex = new Explosion(pos, ownerId, EXPLOSION.radius * blastScale, EXPLOSION.ttl);
+    this.explosions.push(ex);
+    this.terrain.applyImpact(
+      pos.x,
+      pos.z,
+      TERRAIN.blastRadius * blastScale,
+      TERRAIN.blastAmount
+    );
+    this.events.push({ type: 'impact', x: pos.x, y: pos.y, z: pos.z, radius: ex.maxRadius });
+    return ex;
   }
 
   spawnMuzzleFlash(pos, color = COLORS.muzzle) {
     this.effects.push(new Effect({ pos: pos.clone(), color, ttl: 0.12, kind: 'muzzle', scale: 0.9 }));
   }
 
+  spawnPowerup(kind, team, pen) {
+    const p = new Powerup(kind, team, {
+      x: pen.xMin + Math.random() * (pen.xMax - pen.xMin),
+      y: 0,
+      z: pen.zMin + Math.random() * (pen.zMax - pen.zMin),
+    });
+    this.powerups.push(p);
+    return p;
+  }
+
+  _powerupCountForTeam(team) {
+    let n = 0;
+    for (const p of this.powerups) if (p.alive && p.team === team) n += 1;
+    return n;
+  }
+
+  _teamPens() {
+    const pens = new Map();
+    for (const t of this.tanks) if (t.pen && !pens.has(t.team)) pens.set(t.team, t.pen);
+    return pens;
+  }
+
+  _maybeSpawnPowerups() {
+    const pens = this._teamPens();
+    for (const [team, pen] of pens) {
+      if (!this.nextPowerupAt.has(team)) this.nextPowerupAt.set(team, this.time + POWERUPS.spawnInterval);
+      let next = this.nextPowerupAt.get(team);
+      if (this.time < next) continue;
+      this.nextPowerupAt.set(team, next + POWERUPS.spawnInterval);
+      if (this._powerupCountForTeam(team) >= POWERUPS.maxPerTeam) continue;
+      const kind = Math.random() < 0.5 ? 'speed' : 'blastRadius';
+      this.spawnPowerup(kind, team, pen);
+    }
+  }
+
+  _resolvePowerupPickups() {
+    for (const p of this.powerups) {
+      if (!p.alive) continue;
+      for (const t of this.tanks) {
+        if (!t.alive || t.team !== p.team) continue;
+        const dx = t.position.x - p.position.x;
+        const dz = t.position.z - p.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d <= POWERUPS.pickupRadius + COMBAT.tankRadius * 0.4) {
+          const value = p.kind === 'speed' ? POWERUPS.speedMultiplier : POWERUPS.blastRadiusMultiplier;
+          t.applyBuff(p.kind, value, POWERUPS.duration, this.time);
+          p.alive = false;
+          this.events.push({ type: 'pickup', tank: t.tankId, kind: p.kind });
+          break;
+        }
+      }
+    }
+  }
+
   step(dt) {
-    this.lastDt = dt; // available to controllers that need timing (e.g. AI)
+    this.lastDt = dt;
+    this.time += dt;
     this.events.length = 0;
+
+    // 0. Expire buffs and spawn new team-local pickups.
+    for (const t of this.tanks) t.updateBuffs(this.time);
+    this._maybeSpawnPowerups();
 
     // 1. Controllers decide intent; tanks act (may spawn shells).
     for (const t of this.tanks) {
@@ -62,8 +144,7 @@ export class GameState {
       if (action) t.applyAction(action, dt, this);
     }
 
-    // 2. Respawn destroyed tanks that opt into auto-respawn (enemies do; the
-    //    player does not — player death ends the run).
+    // 2. Respawn destroyed tanks that opt into auto-respawn.
     for (const t of this.tanks) {
       if (!t.alive && t.autoRespawn) {
         t.respawnTimer -= dt;
@@ -74,20 +155,21 @@ export class GameState {
       }
     }
 
-    // 3. Shells move under gravity.
+    // 3. Tanks can pick up powerups after moving this frame.
+    this._resolvePowerupPickups();
+
+    // 4. Shells move under gravity.
     for (const s of this.shells) s.integrate(dt, GRAVITY);
 
-    // 4. Ground impacts -> effect (once per shell).
+    // 5. Ground impacts -> explosion (once per shell).
     for (const s of this.shells) {
       if (!s.alive && !s._impacted && s.position.y <= SHELL.radius + 0.05) {
         s._impacted = true;
-        this.spawnImpact(s.position);
-        this.terrain.applyImpact(s.position.x, s.position.z);
-        this.events.push({ type: 'impact', x: s.position.x, y: s.position.y, z: s.position.z });
+        this.spawnExplosion(s.position, s.ownerId, s.blastScale);
       }
     }
 
-    // 5. Shell-vs-tank collisions (skip owner).
+    // 6. Shell-vs-tank contact -> explosion (no direct damage here).
     for (const s of this.shells) {
       if (!s.alive) continue;
       for (const t of this.tanks) {
@@ -98,38 +180,61 @@ export class GameState {
         const dz = s.position.z - t.position.z;
         const r = SHELL.radius + COMBAT.tankRadius;
         if (dx * dx + dy * dy + dz * dz <= r * r) {
-          t.takeDamage(COMBAT.hitDamage);
           s.alive = false;
           s._impacted = true;
-        this.spawnImpact(s.position);
-        this.terrain.applyImpact(s.position.x, s.position.z);
-          this.events.push({
-            type: 'hit',
-            target: t.tankId,
-            by: s.ownerId,
-            damage: COMBAT.hitDamage,
-            fatal: !t.alive,
-          });
+          this.spawnExplosion(s.position, s.ownerId, s.blastScale);
           break;
         }
       }
     }
 
-    // 6. Reap dead shells.
+    // 7. Reap dead shells.
     this.shells = this.shells.filter((s) => s.alive);
 
-    // 7. Advance effects.
+    // 8. Explosions expand; tanks take damage when the wave reaches them.
+    for (const ex of this.explosions) {
+      ex.update(dt);
+      if (!ex.alive) continue;
+      for (const t of this.tanks) {
+        if (!t.alive || t.tankId === ex.ownerId || ex.hitIds.has(t.tankId)) continue;
+        const cy = t.position.y + TANK.bodyCenterY;
+        const dx = ex.position.x - t.position.x;
+        const dy = ex.position.y - cy;
+        const dz = ex.position.z - t.position.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist <= ex.radius + COMBAT.tankRadius) {
+          t.takeDamage(EXPLOSION.damage);
+          ex.hitIds.add(t.tankId);
+          this.events.push({
+            type: 'hit',
+            target: t.tankId,
+            by: ex.ownerId,
+            damage: EXPLOSION.damage,
+            fatal: !t.alive,
+          });
+        }
+      }
+    }
+    this.explosions = this.explosions.filter((e) => e.alive);
+
+    // 9. Advance powerup idle animation / despawn.
+    for (const p of this.powerups) p.update(dt);
+    this.powerups = this.powerups.filter((p) => p.alive);
+
+    // 10. Advance cosmetic effects.
     for (const e of this.effects) e.update(dt);
     this.effects = this.effects.filter((e) => e.alive);
   }
 
-  // --- Query helpers (mainly for future AI controllers) ---
+  // --- Query helpers (mainly for future AI/controllers) ---
   tankById(id) {
     return this.tanks.find((t) => t.tankId === id);
   }
+
   enemiesOf(id) {
     return this.tanks.filter((t) => t.tankId !== id);
   }
+
   // Nearest alive tank on a different team (for AI targeting / future FFA).
   nearestEnemy(tank) {
     let best = null;
@@ -139,10 +244,14 @@ export class GameState {
       const dx = t.position.x - tank.position.x;
       const dz = t.position.z - tank.position.z;
       const d = dx * dx + dz * dz;
-      if (d < bd) { bd = d; best = t; }
+      if (d < bd) {
+        bd = d;
+        best = t;
+      }
     }
     return best;
   }
+
   incomingShells(id) {
     return this.shells.filter((s) => s.ownerId !== id);
   }

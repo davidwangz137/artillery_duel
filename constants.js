@@ -49,6 +49,22 @@ export const TERRAIN = {
   slowFactor: 0.75,  // at full damage, drive speed is multiplied by (1 - slowFactor)
 };
 
+export const EXPLOSION = {
+  radius: 3.2, // base max radius before buffs
+  ttl: 0.22,   // seconds; expanding hit window / visual
+  damage: COMBAT.hitDamage,
+};
+
+export const POWERUPS = {
+  spawnInterval: 10,         // seconds between spawn attempts per team
+  maxPerTeam: 2,             // live pickups allowed in each team pen
+  pickupRadius: 1.8,         // world units
+  lifetime: 18,              // seconds before an uncollected pickup despawns
+  duration: 12,              // seconds of buff time after pickup
+  speedMultiplier: 1.45,
+  blastRadiusMultiplier: 1.55,
+};
+
 export const RESPAWN = {
   delay: 2.5,        // seconds before a destroyed tank reappears
 };
@@ -64,6 +80,9 @@ export const COLORS = {
   shell: 0xffd24a,
   impact: 0xc8863a,
   muzzle: 0xffe08a,
+  powerupSpeed: 0x4ad9d9,
+  powerupBlast: 0xff9a3a,
+  explosion: 0xffb36a,
   enemyPalette: [0xd94a4a, 0xd97ac0, 0xc09b3a, 0x9b5bd9],
 };
 

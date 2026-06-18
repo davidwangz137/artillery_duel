@@ -85,16 +85,20 @@ export class Renderer {
 
   sync(state, aimTank) {
     if (state.terrain) state.terrain.update();
-    // Add any new tanks/shells/effects that aren't in the scene yet.
+    // Add any new tanks/shells/explosions/powerups/effects that aren't in the
+    // scene yet.
     for (const t of state.tanks) if (!t.parent) this.scene.add(t);
     for (const s of state.shells) if (!s.parent) this.scene.add(s);
+    for (const ex of state.explosions) if (!ex.parent) this.scene.add(ex);
+    for (const p of state.powerups) if (!p.parent) this.scene.add(p);
     for (const e of state.effects) if (!e.parent) this.scene.add(e);
-
     // Drop scene objects whose backing entity is gone.
     for (let i = this.scene.children.length - 1; i >= 0; i--) {
       const ch = this.scene.children[i];
       if (
         (ch.isShell && !state.shells.includes(ch)) ||
+        (ch.isExplosion && !state.explosions.includes(ch)) ||
+        (ch.isPowerup && !state.powerups.includes(ch)) ||
         (ch.isEffect && !state.effects.includes(ch)) ||
         (ch.isTank && !state.tanks.includes(ch))
       ) {

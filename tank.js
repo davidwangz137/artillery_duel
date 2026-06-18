@@ -37,10 +37,11 @@ export class Tank extends THREE.Group {
     this.alive = true;
     this.respawnTimer = 0;
     this._spawn = new THREE.Vector3(); // set by the spawner; used on respawn
-    this.fireCooldown = COMBAT.fireCooldown; // per-tank (AI shoots slower)
     this.autoRespawn = true;                 // player sets this false (game over on death)
     this.team = 0;                           // team id; enemies are tanks on other teams
     this.pen = null;                         // {xMin,xMax,zMin,zMax} movement bounds (set by spawner)
+    this.mouseAim = false;                   // HUD hint (set by HumanController)
+    this.buffs = Object.create(null);        // { speed?: {value,expiresAt}, blastRadius?: {...} }
 
     this._build(color);
     this.scale.setScalar(TANK.scale); // shrink the model relative to the world
@@ -92,6 +93,40 @@ export class Tank extends THREE.Group {
     return out;
   }
 
+  updateBuffs(now) {
+    for (const [k, v] of Object.entries(this.buffs)) {
+      if (v.expiresAt <= now) delete this.buffs[k];
+    }
+  }
+
+  clearBuffs() {
+    this.buffs = Object.create(null);
+  }
+
+  applyBuff(type, value, duration, now) {
+    this.buffs[type] = { value, expiresAt: now + duration };
+  }
+
+  getBuffMultiplier(type) {
+    return this.buffs[type]?.value ?? 1;
+  }
+
+  moveSpeedMultiplier() {
+    return this.getBuffMultiplier('speed');
+  }
+
+  explosionRadiusMultiplier() {
+    return this.getBuffMultiplier('blastRadius');
+  }
+
+  activeBuffs(now) {
+    return Object.entries(this.buffs).map(([type, v]) => ({
+      type,
+      value: v.value,
+      timeLeft: Math.max(0, v.expiresAt - now),
+    }));
+  }
+
   // Apply one frame's intent. Movement, aim, and firing all happen here.
   // Spawns a shell into `state` when firing and off cooldown.
   applyAction(a, dt, state) {
@@ -103,7 +138,7 @@ export class Tank extends THREE.Group {
     const fwdX = Math.sin(this.bodyYaw);
     const fwdZ = Math.cos(this.bodyYaw);
     const terrainDmg = state.terrain ? state.terrain.damageAt(this.position.x, this.position.z) : 0;
-    const speedMul = 1 - TERRAIN.slowFactor * terrainDmg;
+    const speedMul = this.moveSpeedMultiplier() * (1 - TERRAIN.slowFactor * terrainDmg);
     this.position.x += fwdX * a.drive * TANK.driveSpeed * speedMul * dt;
     this.position.z += fwdZ * a.drive * TANK.driveSpeed * speedMul * dt;
     // Clamp to this tank's pen (its team's region) — or the arena if unset.
@@ -133,7 +168,7 @@ export class Tank extends THREE.Group {
   _fire(state) {
     const dir = this.aimDirection(new THREE.Vector3());
     const muzzle = this.muzzlePosition(new THREE.Vector3());
-    state.spawnShell(muzzle, dir.multiplyScalar(MUZZLE_SPEED), this.tankId);
+    state.spawnShell(muzzle, dir.multiplyScalar(MUZZLE_SPEED), this.tankId, this.explosionRadiusMultiplier());
     state.spawnMuzzleFlash(muzzle);
   }
 
@@ -174,6 +209,8 @@ export class Tank extends THREE.Group {
     this.cooldown = 0;
     this.hitFlash = 0;
     this.velocity.set(0, 0, 0);
+    this.mouseAim = false;
+    this.clearBuffs();
     this._syncMesh();
   }
 }

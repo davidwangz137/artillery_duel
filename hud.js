@@ -23,6 +23,7 @@ export class Hud {
     this.playerBar = this._bar('YOU', '#4a90d9');
 
     this.stats = root.appendChild(el('div', 'stats', ''));
+    this.buffs = root.appendChild(el('div', 'buffs', ''));
     this.status = root.appendChild(el('div', 'status', ''));
 
     this.overlay = root.appendChild(el('div', 'overlay hidden'));
@@ -30,6 +31,8 @@ export class Hud {
     this.overlayScore = this.overlay.appendChild(el('div', 'overlay-score', ''));
     this.overlayControls = this.overlay.appendChild(el('div', 'overlay-controls', CONTROLS));
     this.overlayHint = this.overlay.appendChild(el('div', 'overlay-hint', ''));
+    this.toastText = '';
+    this.toastUntil = 0;
   }
 
   _bar(label, color) {
@@ -44,19 +47,28 @@ export class Hud {
 
   update(state, { score, mode, best }) {
     this._setHp(this.playerBar, this.player);
-    this.help.textContent = CONTROLS + '  ·  AIM ' + (this.player.mouseAim ? 'mouse' : 'keys');
-
     const alive = this.enemies.filter((e) => e.alive).length;
     this.stats.textContent = `SCORE ${score}   ·   ENEMIES ${alive}/${this.enemies.length}`;
 
-    // In play: no overlay; show reload status + hit toasts.
+    const buffs = this.player.activeBuffs ? this.player.activeBuffs(state.time) : [];
+    this.buffs.textContent = buffs.length
+      ? 'BUFFS ' + buffs.map((b) => `${b.type === 'blastRadius' ? 'BLAST' : 'SPEED'} ${b.timeLeft.toFixed(1)}s`).join('   ·   ')
+      : 'BUFFS none';
+
+    // In play: no overlay; show reload status + hit/pickup toasts.
     if (mode === 'playing') {
       this.overlay.classList.add('hidden');
       const ready = this.player.cooldown <= 0;
-      let toast = '';
       for (const ev of state.events) {
-        if (ev.type === 'hit' && ev.by === 'player') toast = ev.fatal ? 'KILL!' : 'Hit!';
+        if (ev.type === 'pickup' && ev.tank === 'player') {
+          this.toastText = ev.kind === 'speed' ? 'Picked up SPEED' : 'Picked up BLAST';
+          this.toastUntil = state.time + 1.2;
+        } else if (ev.type === 'hit' && ev.by === 'player') {
+          this.toastText = ev.fatal ? 'KILL!' : 'Hit!';
+          this.toastUntil = state.time + 0.9;
+        }
       }
+      const toast = state.time < this.toastUntil ? this.toastText : '';
       this.status.textContent =
         `[ ${ready ? 'READY' : `reload ${this.player.cooldown.toFixed(1)}s`} ]` +
         (toast ? '   ' + toast : '');

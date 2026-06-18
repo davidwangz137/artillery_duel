@@ -4,7 +4,7 @@ import { SHELL, COLORS } from './constants.js';
 // A live shell. Extends Mesh so it lives directly in the scene graph; the
 // Renderer just needs to add new shells and drop dead ones.
 export class Shell extends THREE.Mesh {
-  constructor(pos, vel, ownerId) {
+  constructor(pos, vel, ownerId, blastScale = 1) {
     super(
       new THREE.SphereGeometry(SHELL.radius, 12, 10),
       new THREE.MeshStandardMaterial({
@@ -17,10 +17,11 @@ export class Shell extends THREE.Mesh {
     this.isShell = true;
     this.position.copy(pos);
     this.velocity = vel.clone();
-    this.ownerId = ownerId; // tank id that fired it (used to skip self-hits)
+    this.ownerId = ownerId;      // tank id that fired it (used to skip self-hits)
+    this.blastScale = blastScale; // frozen at fire time from the owner's buff state
     this.age = 0;
     this.alive = true;
-    this._impacted = false; // ground-impact effect already spawned?
+    this._impacted = false; // explosion already spawned?
   }
 
   // Semi-implicit Euler: update velocity first, then position.

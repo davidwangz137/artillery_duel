@@ -89,7 +89,11 @@ function main() {
   const resetGame = () => {
     score = 0;
     state.shells.length = 0;
+    state.explosions.length = 0;
+    state.powerups.length = 0;
     state.effects.length = 0;
+    state.nextPowerupAt.clear();
+    state.time = 0;
     if (state.terrain) state.terrain.reset(); // fresh field each run
     // Trim any ramp-spawned enemies back to the starting roster.
     while (enemies.length > GAME.numOpponents) {
