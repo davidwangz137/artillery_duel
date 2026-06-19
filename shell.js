@@ -29,8 +29,6 @@ export class Shell extends THREE.Mesh {
     this.age += dt;
     this.velocity.y += gravity * dt;
     this.position.addScaledVector(this.velocity, dt);
-    if (this.position.y <= SHELL.radius || this.age >= SHELL.lifetime) {
-      this.alive = false;
-    }
+    if (this.age >= SHELL.lifetime) this.alive = false; // ground impact is terrain-aware (GameState)
   }
 }

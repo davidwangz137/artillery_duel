@@ -153,8 +153,10 @@ export class Tank extends THREE.Group {
       // Material slow (soil = full, bedrock = slow) + slope slow (uphill grade).
       speedMul *= terrain.materialAt(this.position.x, this.position.z).slow;
       const n = terrain.normalAt(this.position.x, this.position.z, _nrm);
-      const grade = -(n.x * fwdX + n.z * fwdZ) / Math.max(n.y, 1e-3); // + = uphill
-      speedMul *= clamp(1 - grade * DRIVING.uphillCost, DRIVING.minSlopeMul, DRIVING.maxSlopeMul);
+      const grade = -(n.x * fwdX + n.z * fwdZ) / Math.max(n.y, 1e-3); // + = uphill (forward)
+      // Flip by drive sign so reversing gets the opposite slope effect.
+      const moveGrade = grade * (a.drive < 0 ? -1 : 1);
+      speedMul *= clamp(1 - moveGrade * DRIVING.uphillCost, DRIVING.minSlopeMul, DRIVING.maxSlopeMul);
     }
     let mx = fwdX * a.drive * TANK.driveSpeed * speedMul * dt;
     let mz = fwdZ * a.drive * TANK.driveSpeed * speedMul * dt;

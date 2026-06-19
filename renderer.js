@@ -90,8 +90,7 @@ export class Renderer {
       }
     }
 
-    this._syncTrails(state);
-    this._updateTrajectory(aimTank);
+    this._updateTrajectory(aimTank, state.terrain);
   }
 
   // Per-shell motion streak: a short line extruded backward along each shell's
@@ -142,7 +141,7 @@ export class Renderer {
     }
   }
 
-  _updateTrajectory(tank) {
+  _updateTrajectory(tank, terrain) {
     const geo = this.trajectory.geometry;
     if (!tank || !tank.alive) {
       geo.setDrawRange(0, 0);
@@ -159,7 +158,7 @@ export class Renderer {
       arr[n++] = pos.z;
       vel.y += GRAVITY * dt;
       pos.addScaledVector(vel, dt);
-      if (pos.y <= 0.2) {
+      if (pos.y <= (terrain ? terrain.heightAt(pos.x, pos.z) : 0) + 0.2) {
         arr[n++] = pos.x;
         arr[n++] = pos.y;
         arr[n++] = pos.z;

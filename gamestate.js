@@ -155,11 +155,17 @@ export class GameState {
     // 4. Shells move under gravity.
     for (const s of this.shells) s.integrate(dt, GRAVITY);
 
-    // 5. Ground impacts -> explosion (once per shell).
+    // 5. Ground impacts (terrain-aware) -> explosion. The shell is killed here,
+    //    not in integrate(), so craters lower the impact point correctly.
     for (const s of this.shells) {
-      if (!s.alive && !s._impacted && s.position.y <= this.terrain.heightAt(s.position.x, s.position.z) + SHELL.radius) {
+      if (s._impacted) continue;
+      const sx = s.position.x;
+      const sz = s.position.z;
+      if (s.position.y <= this.terrain.heightAt(sx, sz) + SHELL.radius) {
         s._impacted = true;
-        this.spawnExplosion(s.position, s.ownerId, s.blastScale);
+        s.alive = false;
+        // Detonate at the surface point (not the overshooting shell y).
+        this.spawnExplosion({ x: sx, y: this.terrain.heightAt(sx, sz), z: sz }, s.ownerId, s.blastScale);
       }
     }
 
