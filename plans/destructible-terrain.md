@@ -49,15 +49,22 @@ engine). three.js has no built-in vehicle/terrain system, so this is hand-rolled
   (so the surface is smooth, not stair-stepped) — critical for stable driving.
 - Surface **normal** via central differences on the grid (or the bilinear patch).
 - `BEDROCK_Y` (e.g. −8 units): `h` is clamped to `>= BEDROCK_Y`. Cells at the
-  floor are tagged bedrock (distinct color, and cratering no-ops there).
+  floor are bedrock — cratering no-ops there (indestructible).
+- **Material is a function of depth** (`h`), which gives us the slowness model
+  for free and lets the ground *color* show how slow a region is. v1 has two
+  materials: **soil** (`h > BEDROCK_Y`, full speed) and **bedrock** (`h == BEDROCK_Y`,
+  slow). `terrain.materialAt(x,z)` → `{ slowFactor, color, bedrock }`. Future
+  iterations split the soil range into layers (dirt/clay/rock) by depth, each
+  with its own `slowFactor` + color — just more thresholds, no new architecture.
 - Initial state: flat (`h = 0`), or a tiny low-amplitude noise for visual life.
 
 ### Mesh
 
 - One indexed `BufferGeometry` with `(RES+1)²` vertices, positions displaced by
   `h`; `computeVertexNormals()` for lighting. `MeshStandardMaterial` with
-  **vertex colors** by material zone: grass (high), dirt/scorched (crater
-  walls), bedrock (floor). Re-paint vertex colors locally on cratering.
+  **vertex colors** from each vertex's material layer (i.e. its depth →
+  `slowFactor`/color), so the ground color directly shows how slow a region is.
+  Re-paint vertex colors locally on cratering.
 - On deformation, update only the affected vertex window + recompute normals in a
   slightly larger window (a crater of radius `r` touches `~(2r/cell)²` cells → a
   few hundred at most). Cheap, even per-explosion.
@@ -89,51 +96,57 @@ buffs scale `Cr` (wider dent) — visible and physical.
 ## 3. Driving physics (slope-aware, forbids impossible climbs)
 
 Replace today's flat XZ driving + damage-slow with a kinematic heightfield model
-in `Tank.applyAction` (or a new physics step the sim calls). No physics engine.
+in `Tank.applyAction` (or a new physics step the sim calls). No physics engine,
+and **no gravity slide** — tank treads hold the tank on a slope (a real tank
+applies holding force, it doesn't roll away).
 
 Per frame, per tank:
 
-1. **Slope speed (gravity)** — sample the surface normal at the current cell;
-   compute the **grade** along the travel direction (rise/run, + = uphill).
-   `slopeMul = clamp(1 - grade * UPHILL_COST, MIN_MUL, MAX_MUL)`. Uphill slows,
-   downhill speeds (capped). This is "going up a ramp is slower than flat."
-2. **Intended move** — `Δ = forward * drive * baseSpeed * slopeMul * dt` (same
-   `baseSpeed` as today; damage-slow is removed — craters now slow you physically
-   via their slopes).
-3. **Climb limit (forbid impossible)** — sample the height at the prospective
-   new cell; `moveGrade = (h(new) - h(cur)) / |Δ|`. If `moveGrade > MAX_CLIMB`
-   (tread limit, e.g. `tan(35°) ≈ 0.70`), **block the uphill move** (tank stalls
-   at the base / slides back). Cannot climb walls or near-vertical crater rims.
-   The "treads tolerance" *is* `MAX_CLIMB`.
-4. **Ground follow** — set `tank.y = h(pos) + clearance`, **lerped** per frame
-   (fake suspension) so the ride is smooth over rough ground and the tank
-   settles into craters. The body can pitch to the surface normal for extra
-   realism (optional).
-5. **(Optional, later) gravity slide** — on a slope steeper than a friction
-   angle while idling, drift downhill. Defer for v1; the climb-limit + slope-speed
-   already give the core feel.
+1. **Material speed** — `mat = terrain.materialAt(pos)`; the speed multiplier
+   starts from `mat.slowFactor` (soil = 1.0, bedrock = slow). This is the only
+   "terrain slow" — the old accumulated-damage slow is gone. The reduction is
+   gradual in feel because (a) slope physics below ramps continuously and (b)
+   only the deepest crater floors expose bedrock; future depth layers smooth it
+   further. No instant drop to slowest.
+2. **Slope speed (gravity)** — sample the surface normal; **grade** along travel
+   (rise/run, + = uphill). `slopeMul = clamp(1 - grade * UPHILL_COST, MIN, MAX)`.
+   Uphill slows, downhill speeds (capped). "Going up a ramp is slower than flat."
+3. **Intended move** — `Δ = forward * drive * baseSpeed * mat.slowFactor *
+   slopeMul * dt`. (Buffs like `speed` still multiply in.)
+4. **Climb limit (forbid impossible)** — `moveGrade = (h(new) - h(cur)) / |Δ|`.
+   If `moveGrade > MAX_CLIMB` (tread limit, e.g. `tan(35°) ≈ 0.70`), **block the
+   uphill move** (tank stalls at the base). Cannot climb walls or near-vertical
+   crater rims. The "treads tolerance" *is* `MAX_CLIMB`. No slide — it just stops.
+5. **Ground follow + body pitch** — `tank.y = h(pos) + clearance`, **lerped** per
+   frame (fake suspension) for a smooth ride; the tank settles into craters. The
+   **body pitches/rolls to the surface normal** (visual realism — the tank tilts
+   with the ground), with the turret staying world-up so aiming is unaffected.
 
-Result: tanks ride the terrain, slow on climbs, can't scale impossible slopes,
-and naturally bog down in cratered fields (the endgame pressure — now physical,
-not a magic slow debuff). The damage-grid `slowFactor` is removed.
+Result: tanks ride and tilt with the terrain, slow on climbs, can't scale
+impossible slopes, slow on exposed bedrock, and naturally bog down in cratered
+fields (endgame pressure — now physical, not a magic debuff).
 
 ## 4. Integration with existing systems
 
 - **`terrain.js`** — rewritten as the heightfield: owns `h` grid, mesh, bedrock,
-  `heightAt/normalAt`, `crater(x,z,Cr,Cd)`, local mesh/color updates, `reset()`.
+  the depth→material layer table, and the queries `heightAt / normalAt /
+  materialAt`, plus `crater(x,z,Cr,Cd)` and local mesh/color updates, `reset()`.
   Keeps the `Terrain` name/API the rest of the code already uses.
 - **`renderer.js`** — `_buildGround` builds the heightfield mesh (replaces the
-  flat `PlaneGeometry`); ground damage is now the geometry itself (drop the
-  canvas texture). No-man's-land strip stays (it's XZ; can be flat or deformed).
+  flat `PlaneGeometry`); ground damage is now the geometry + vertex colors (drop
+  the canvas texture).
 - **`gamestate.js`** — explosions call `terrain.crater(...)` instead of
   `applyImpact`; explosion origin `y = heightAt(x,z)`. Shell "ground impact"
   test becomes `shell.y <= heightAt(x,z) + shellRadius` (shells now hit real
   crater rims/depths). Tank-tank, pen clamps, powerup pickup: unchanged.
-- **`tank.js`** — driving uses the heightfield (ground follow + slope/climb);
-  remove the `TERRAIN.slowFactor` term. Buffs (`speed`) still apply.
+- **`tank.js`** — driving queries `terrain.heightAt/normalAt/materialAt`
+  (ground follow + body pitch + slope/climb + material slow). The inline damage
+  term (the `terrainDmg`/`slowFactor` at the current drive site) is removed.
+  Buffs (`speed`) still apply.
 - **`main.js`** — spawns/powerups place at `heightAt(x,z)`; otherwise unchanged.
-- **Pens / no-man's-land** — XZ bounds unchanged; the divider can be kept flat or
-  allowed to crater (design choice).
+- **No-man's-land divider** — **kept flat and not cratered** (decision). It's an
+  XZ uncrossable strip; explosions overlapping it simply don't dent it (the
+  crater routine skips cells inside the divider band).
 
 ## 5. Performance
 
@@ -155,34 +168,77 @@ not a magic slow debuff). The damage-grid `slowFactor` is removed.
 ## 7. Phased implementation (when we build it)
 
 1. **Heightfield core** — grid + mesh (replace flat ground), bedrock clamp,
-   `heightAt/normalAt`, flat initial state. Verify: scene shows the field.
+   `heightAt/normalAt/materialAt`, flat initial state. Verify: scene shows the field.
 2. **Cratering** — `crater(x,z,Cr,Cd)` with non-linear profile, smoothing,
-   bedrock; vertex-color zones + exposed bedrock. Verify: explosions leave
-   smoothed dents of the right depth/radius, cumulative to bedrock.
-3. **Driving** — ground follow (y-lerp), slope-speed, `MAX_CLIMB` block, remove
-   damage-slow. Verify: uphill slower, steep walls unclimbable, craters bog tanks.
+   bedrock; vertex colors from material layer + exposed bedrock; **divider band
+   skipped**. Verify: explosions leave smoothed dents of the right depth/radius,
+   cumulative to bedrock; divider stays flat.
+3. **Driving** — ground follow (y-lerp) + **body pitch to normal**, slope-speed,
+   `MAX_CLIMB` block (no slide), **material slow** (`materialAt`). Remove the old
+   damage-slow. Verify: uphill slower + body tilts, steep walls unclimbable,
+   bedrock slows, craters bog tanks.
 4. **Collisions** — shell-ground test on the heightfield; explosion origin at
    surface; spawns sit on the surface. Verify: shells impact real terrain.
 5. **Tuning pass** — `craterDepth/Radius` vs `blastRadius`, smoothing strength,
-   `MAX_CLIMB`, `UPHILL_COST`, bedrock depth, grid resolution. Verify feel +
-   endgame pressure + perf.
+   `MAX_CLIMB`, `UPHILL_COST`, bedrock slow + depth, grid resolution. Verify feel
+   + endgame pressure + perf.
 
 ## 8. Tunables to add (in `constants.js`)
 
 ```
 TERRAIN = { resolution: 128, bedrockY: -8,
             craterRadius: 5.0, craterDepth: 2.0,   // dent (<< blastRadius)
-            smoothingPasses: 2, maxSlope: 0.9 }    // concavity limit
-DRIVING  = { maxClimb: 0.70,      // tan(35°) tread limit
-             uphillCost: 1.2,     // slope-speed penalty
-             groundClearance: 0.15, yLerp: 0.3 }   // suspension smoothing
+            smoothingPasses: 2, maxSlope: 0.9,     // concavity limit
+            // depth -> material layer table (slowFactor + color). v1: soil + bedrock.
+            layers: [ { above: -1,   slow: 1.0,  color: 0x4a7a44 }, // topsoil/grass
+                       { above: -8,   slow: 1.0,  color: 0x6b5232 }, // soil (v1: no slow)
+                       { bedrock: true, slow: 0.4, color: 0x55503f } ] }
+DRIVING  = { maxClimb: 0.70,        // tan(35°) tread limit; no slide
+             uphillCost: 1.2,       // slope-speed penalty (gradual)
+             groundClearance: 0.15, yLerp: 0.3,   // suspension smoothing
+             bodyPitch: true, pitchLerp: 0.2 }    // tilt to surface normal
 ```
 `EXPLOSION.radius` (combat AoE) stays separate from `TERRAIN.crater*` (the dent).
+Adding intermediate slow layers later is just inserting entries into `layers`
+(e.g. clay slow 0.75, rock slow 0.55) — the depth→material lookup + vertex
+colors pick them up automatically.
 
-## 9. Open questions for you
+## 9. Decisions (resolved)
 
-- **Crater the no-man's-land / divider**, or keep it a flat uncrossable strip?
-- **Gravity slide when idling on a steep slope** — v1 or later?
-- **Body pitch to the surface normal** (visual realism) — worth the extra math?
-- Keep a **damage-based slow on top** of slope physics, or let slope physics
-  fully carry the endgame pressure (recommended)?
+- **No-man's-land divider** — kept **flat and not cratered** (explosions skip the
+  divider band).
+- **Gravity slide** — **none**. Tank treads apply holding force; a tank doesn't
+  roll downhill when idling. Slope physics still slow uphill climbs.
+- **Body pitch to the surface normal** — **yes**. Tank tilts with the ground
+  (lerped); the turret stays world-up so aim is unaffected.
+- **Slowness model** — **remove the accumulated-damage slow entirely**. The only
+  terrain slow is **material-based**: soil = full speed, **bedrock = slow**, with
+  the ground *color* showing the material. Depth→material is a lookup table, so
+  intermediate layers (dirt/clay/rock, progressively slower) are a future config
+  add — no architecture change. The reduction feels gradual because slope physics
+  ramps continuously and only deep crater floors expose slow material.
+
+## 10. Code structure (OO intent — no refactor now)
+
+Side note from the brief: physics today is applied somewhat inline (e.g. the old
+`terrainDmg`/`slowFactor` term lives inside `Tank.applyAction`). We agree on the
+principle — **objects own their physical properties, and physics *resolves* by
+querying properties from objects and applying the update** — but we are **not**
+doing a separate refactor pass. Instead, the destructible-terrain work follows
+this shape as it's built:
+
+- **`Terrain` owns all field-derived physical state** — the heightfield, bedrock,
+  material layers — and exposes it only through clean queries: `heightAt`,
+  `normalAt`, `materialAt`, plus mutators (`crater`, `reset`). Nothing else pokes
+  the grid directly.
+- **`Tank` owns its motion state** (position, yaw, velocity) and its own physical
+  attributes (base speed, buffs, climb limit). Its driving step *queries* the
+  terrain (via the methods above) rather than reaching into terrain internals —
+  so the inline `terrainDmg` computation moves out of the tank and becomes a
+  `terrain.materialAt(...)` query.
+- **Resolution** stays a per-frame step (in `GameState.step` / `Tank`'s update):
+  gather the relevant object properties, integrate, write back to the object.
+
+Net: the new code is cleanly separated (Terrain = field queries; Tank = motion;
+step = resolution), which is what makes adding future systems (more layers, a
+real physics engine, weather) cheap. No churn to unrelated existing systems.
