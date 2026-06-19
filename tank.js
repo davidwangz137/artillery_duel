@@ -3,7 +3,7 @@ import {
   ARENA,
   TANK,
   COMBAT,
-  TERRAIN,
+  DRIVING,
   RESPAWN,
   MUZZLE_SPEED,
   clamp,
@@ -13,6 +13,10 @@ import {
 const _aim = new THREE.Vector3();
 const _muzzle = new THREE.Vector3();
 const _oldPos = new THREE.Vector3();
+const _nrm = new THREE.Vector3();
+const _localN = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _q = new THREE.Quaternion();
 
 // A tank. Extends THREE.Group: its world transform IS its position/orientation.
 // Has no idea who is steering it — that's a Controller's job (see applyAction).
@@ -51,9 +55,14 @@ export class Tank extends THREE.Group {
   _build(color) {
     const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.15 });
 
+    // Body sits in a pivot that pitches to the surface normal; the turret is a
+    // sibling (kept upright) so aiming is unaffected by the body tilt.
+    const bodyPivot = new THREE.Group();
+    this.add(bodyPivot);
+    this.bodyPivot = bodyPivot;
     const body = new THREE.Mesh(new THREE.BoxGeometry(3, 1.2, 4), bodyMat);
     body.position.y = 0.9;
-    this.add(body);
+    bodyPivot.add(body);
     this.bodyMesh = body; // flashed red on hit
 
     // Turret pivots on yaw (relative to body); barrel pitches inside it.
@@ -133,19 +142,41 @@ export class Tank extends THREE.Group {
   applyAction(a, dt, state) {
     if (!this.alive) return;
 
-    // Body rotation + drive.
+    // Body rotation + heightfield-aware drive.
     this.bodyYaw += a.bodyTurn * TANK.bodyTurnSpeed * dt;
     _oldPos.copy(this.position);
     const fwdX = Math.sin(this.bodyYaw);
     const fwdZ = Math.cos(this.bodyYaw);
-    const terrainDmg = state.terrain ? state.terrain.damageAt(this.position.x, this.position.z) : 0;
-    const speedMul = this.moveSpeedMultiplier() * (1 - TERRAIN.slowFactor * terrainDmg);
-    this.position.x += fwdX * a.drive * TANK.driveSpeed * speedMul * dt;
-    this.position.z += fwdZ * a.drive * TANK.driveSpeed * speedMul * dt;
+    const terrain = state.terrain;
+    let speedMul = this.moveSpeedMultiplier();
+    if (terrain) {
+      // Material slow (soil = full, bedrock = slow) + slope slow (uphill grade).
+      speedMul *= terrain.materialAt(this.position.x, this.position.z).slow;
+      const n = terrain.normalAt(this.position.x, this.position.z, _nrm);
+      const grade = -(n.x * fwdX + n.z * fwdZ) / Math.max(n.y, 1e-3); // + = uphill
+      speedMul *= clamp(1 - grade * DRIVING.uphillCost, DRIVING.minSlopeMul, DRIVING.maxSlopeMul);
+    }
+    let mx = fwdX * a.drive * TANK.driveSpeed * speedMul * dt;
+    let mz = fwdZ * a.drive * TANK.driveSpeed * speedMul * dt;
+    // Climb limit: forbid impossible uphill moves (treads hold — no slide).
+    if (terrain) {
+      const hCur = terrain.heightAt(this.position.x, this.position.z);
+      const hNew = terrain.heightAt(this.position.x + mx, this.position.z + mz);
+      const step = Math.hypot(mx, mz);
+      if (step > 1e-4 && (hNew - hCur) / step > DRIVING.maxClimb) { mx = 0; mz = 0; }
+    }
+    this.position.x += mx;
+    this.position.z += mz;
     // Clamp to this tank's pen (its team's region) — or the arena if unset.
     const p = this.pen || { xMin: -ARENA.half + 1.5, xMax: ARENA.half - 1.5, zMin: -ARENA.half + 1.5, zMax: ARENA.half - 1.5 };
     this.position.x = clamp(this.position.x, p.xMin, p.xMax);
     this.position.z = clamp(this.position.z, p.zMin, p.zMax);
+    // Ground follow (fake suspension) + body pitch to the surface normal.
+    if (terrain) {
+      const groundY = terrain.heightAt(this.position.x, this.position.z) + DRIVING.groundClearance;
+      this.position.y += (groundY - this.position.y) * DRIVING.yLerp;
+      this._applyBodyPitch(terrain);
+    }
     // Observed velocity (for AI target-leading).
     const inv = 1 / Math.max(dt, 1e-4);
     this.velocity.set((this.position.x - _oldPos.x) * inv, 0, (this.position.z - _oldPos.z) * inv);
@@ -171,6 +202,19 @@ export class Tank extends THREE.Group {
     const muzzle = this.muzzlePosition(new THREE.Vector3());
     state.spawnShell(muzzle, dir.multiplyScalar(MUZZLE_SPEED), this.tankId, this.explosionRadiusMultiplier());
     state.spawnMuzzleFlash(muzzle);
+  }
+
+  // Tilt the body to the surface normal (shortest rotation of body-up onto the
+  // local normal), smoothed. The turret is a sibling so it stays upright.
+  _applyBodyPitch(terrain) {
+    if (!DRIVING.bodyPitch) { this.bodyPivot.quaternion.set(0, 0, 0, 1); return; }
+    const n = terrain.normalAt(this.position.x, this.position.z, _nrm);
+    // Express the world normal in the (yawed) parent's local frame.
+    const cy = Math.cos(this.bodyYaw);
+    const sy = Math.sin(this.bodyYaw);
+    _localN.set(n.x * cy - n.z * sy, n.y, n.x * sy + n.z * cy).normalize();
+    _q.setFromUnitVectors(_up.set(0, 1, 0), _localN);
+    this.bodyPivot.quaternion.slerp(_q, DRIVING.pitchLerp);
   }
 
   _syncMesh() {
@@ -210,6 +254,7 @@ export class Tank extends THREE.Group {
     this.cooldown = 0;
     this.hitFlash = 0;
     this.velocity.set(0, 0, 0);
+    if (this.bodyPivot) this.bodyPivot.quaternion.set(0, 0, 0, 1);
     this.mouseAim = false;
     this.clearBuffs();
     this._syncMesh();

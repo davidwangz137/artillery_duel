@@ -34,25 +34,15 @@ export class Renderer {
   }
 
   _buildGround() {
+    // The deformable ground is the Terrain's own mesh (added in init). Here we
+    // only add the flat no-man's-land strip that marks the team-pen boundary.
     const size = ARENA.half * 2;
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(size, size),
-      new THREE.MeshStandardMaterial({ color: COLORS.ground, roughness: 1 })
-    );
-    ground.rotation.x = -Math.PI / 2;
-    this.ground = ground;
-    this.scene.add(ground);
-
-    const grid = new THREE.GridHelper(size, size / 4, COLORS.gridMain, COLORS.gridSub);
-    grid.position.y = 0.02;
-    this.scene.add(grid);
-    // No-man's-land strip between the two team pens (visual boundary).
     const nml = new THREE.Mesh(
       new THREE.PlaneGeometry(size, TEAMS.buffer * 2),
       new THREE.MeshStandardMaterial({ color: COLORS.nomansland, roughness: 1 })
     );
     nml.rotation.x = -Math.PI / 2;
-    nml.position.set(0, 0.03, 0);
+    nml.position.set(0, 0.05, 0);
     this.scene.add(nml);
   }
 
@@ -75,16 +65,10 @@ export class Renderer {
 
   init(state) {
     for (const t of state.tanks) this.scene.add(t);
-    // Paint ground damage via the terrain's canvas texture.
-    if (state.terrain) {
-      this.ground.material.map = state.terrain.texture;
-      this.ground.material.color.setHex(0xffffff);
-      this.ground.material.needsUpdate = true;
-    }
+    // The ground IS the deformable heightfield mesh.
+    if (state.terrain) this.scene.add(state.terrain.mesh);
   }
-
   sync(state, aimTank) {
-    if (state.terrain) state.terrain.update();
     // Add any new tanks/shells/explosions/powerups/effects that aren't in the
     // scene yet.
     for (const t of state.tanks) if (!t.parent) this.scene.add(t);
