@@ -1,0 +1,19 @@
+{
+  // Tells the JS/TS language server (vtsls/tsserver) that this directory is a
+  // single project. Without it, tsserver builds an "inferred project" scoped to
+  // only the files you have open — so "go to references" misses call sites in
+  // files that aren't open. With this, the whole src/ tree is one project and
+  // references resolve across all of it at once.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*.js", "types/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}
