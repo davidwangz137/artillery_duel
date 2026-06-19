@@ -25,3 +25,32 @@ matching the agent's role:
   review feedback, or posting implementation notes/status on its own changes.
 - `[agent reviewer output]` — the agent is the **reviewer**: posting review
   feedback or review comments on someone else's changes.
+
+## Parallel development with git worktrees
+
+We use one git worktree per agent/feature branch so multiple agents can work
+concurrently in full isolation. All worktrees share one `.git` object store and
+ref table — a commit made in any worktree is immediately visible to the others —
+but each worktree has its own branch, working files, and index, so agents never
+clobber each other's in-progress edits.
+
+### Lifecycle
+
+```
+git worktree add -b <branch> ~/code/<branch> main   # new branch off base (one branch per worktree)
+cd ~/code/<branch>
+git commit -am "<msg>"                                # work -> commit -> push -> open a PR
+git push -u origin <branch>
+gh pr create --base main
+# after the PR merges, clean up from any worktree:
+git worktree remove ~/code/<branch>                  # drops the folder + git's admin metadata
+git branch -d <branch>                                # deletes the now-merged branch
+```
+
+### Rules of thumb
+
+- **One branch per worktree.** Git refuses the same branch in two worktrees — name per agent/feature (e.g. `agent-<feature>`).
+- **Commits are shared; working files are not.** Uncommitted edits in worktree A are invisible to B. Commit before expecting others to see work.
+- **Keep pure renames separate from content edits** (move in one commit, edit in the next) so rebases/merges carry edits cleanly through the rename — this is how rebasing this PR onto a branch that edited the old root paths applied those edits to `src/` with zero conflicts.
+- **Stale cleanup:** if a worktree folder is removed manually (`rm -rf`), run `git worktree prune` to reconcile git's metadata.
+- **Scaling to many agents:** each agent gets its own worktree + branch + PR. The shared object store keeps disk low (no duplicated history); the cost is per-worktree build artifacts and the final merge/rebase integration.
