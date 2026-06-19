@@ -174,19 +174,20 @@ export class AiController extends Controller {
     return { bodyTurn: clamp(bodyErr / 0.25, -1, 1), drive };
   }
 
-  // If the tank is on damaged ground, return the yaw toward the least-damaged
-  // nearby heading (8 samples); otherwise null.
+  // Strategic: if sitting in a crater (terrain below the surface), steer toward
+  // the highest nearby heading (out of the hole). Uses heightAt since the old
+  // damage grid is gone; deeper = more "damaged".
   _terrainAvoidYaw(state, tank) {
     const R = 9;
-    const here = state.terrain.damageAt(tank.position.x, tank.position.z);
-    if (here < 0.15) return null;
+    const here = state.terrain.heightAt(tank.position.x, tank.position.z);
+    if (here > -1) return null; // not in a crater
     let best = null;
-    let bestD = here;
+    let bestH = here;
     for (let i = 0; i < 8; i++) {
       const yaw = (i / 8) * Math.PI * 2;
-      const d = state.terrain.damageAt(tank.position.x + Math.sin(yaw) * R, tank.position.z + Math.cos(yaw) * R);
-      if (d < bestD) {
-        bestD = d;
+      const h = state.terrain.heightAt(tank.position.x + Math.sin(yaw) * R, tank.position.z + Math.cos(yaw) * R);
+      if (h > bestH) {
+        bestH = h;
         best = yaw;
       }
     }

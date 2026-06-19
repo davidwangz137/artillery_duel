@@ -23,7 +23,7 @@ import { Powerup } from './powerup.js';
 //   state.shells      -> live shell objects
 //   state.explosions  -> expanding AoE hit windows / visuals
 //   state.powerups    -> pickups in team pens
-//   state.terrain     -> damage grid + texture + damageAt(x,z)
+//   state.terrain     -> deformable heightfield: heightAt/normalAt/materialAt/crater
 //   state.events      -> per-tick { fire | impact | hit | respawn | pickup }
 //   state.time        -> seconds elapsed in the current run
 //
@@ -60,12 +60,8 @@ export class GameState {
   spawnExplosion(pos, ownerId, blastScale = 1) {
     const ex = new Explosion(pos, ownerId, EXPLOSION.radius * blastScale, EXPLOSION.ttl);
     this.explosions.push(ex);
-    this.terrain.applyImpact(
-      pos.x,
-      pos.z,
-      TERRAIN.blastRadius * blastScale,
-      TERRAIN.blastAmount
-    );
+    // Carve a smoothed crater; radius scales with the blast, depth stays shallow.
+    this.terrain.crater(pos.x, pos.z, TERRAIN.craterRadius * blastScale, TERRAIN.craterDepth);
     this.events.push({ type: 'impact', x: pos.x, y: pos.y, z: pos.z, radius: ex.maxRadius });
     return ex;
   }
@@ -75,11 +71,9 @@ export class GameState {
   }
 
   spawnPowerup(kind, team, pen) {
-    const p = new Powerup(kind, team, {
-      x: pen.xMin + Math.random() * (pen.xMax - pen.xMin),
-      y: 0,
-      z: pen.zMin + Math.random() * (pen.zMax - pen.zMin),
-    });
+    const x = pen.xMin + Math.random() * (pen.xMax - pen.xMin);
+    const z = pen.zMin + Math.random() * (pen.zMax - pen.zMin);
+    const p = new Powerup(kind, team, { x, y: this.terrain.heightAt(x, z), z });
     this.powerups.push(p);
     return p;
   }
@@ -161,11 +155,17 @@ export class GameState {
     // 4. Shells move under gravity.
     for (const s of this.shells) s.integrate(dt, GRAVITY);
 
-    // 5. Ground impacts -> explosion (once per shell).
+    // 5. Ground impacts (terrain-aware) -> explosion. The shell is killed here,
+    //    not in integrate(), so craters lower the impact point correctly.
     for (const s of this.shells) {
-      if (!s.alive && !s._impacted && s.position.y <= SHELL.radius + 0.05) {
+      if (s._impacted) continue;
+      const sx = s.position.x;
+      const sz = s.position.z;
+      if (s.position.y <= this.terrain.heightAt(sx, sz) + SHELL.radius) {
         s._impacted = true;
-        this.spawnExplosion(s.position, s.ownerId, s.blastScale);
+        s.alive = false;
+        // Detonate at the surface point (not the overshooting shell y).
+        this.spawnExplosion({ x: sx, y: this.terrain.heightAt(sx, sz), z: sz }, s.ownerId, s.blastScale);
       }
     }
 

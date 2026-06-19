@@ -43,10 +43,29 @@ export const TEAMS = {
 };
 
 export const TERRAIN = {
-  resolution: 128,   // damage grid cells per side
-  blastRadius: 5.5,  // world units; shell impacts crater within this radius
-  blastAmount: 0.55, // damage added at the center of a blast (gaussian falloff)
-  slowFactor: 0.75,  // at full damage, drive speed is multiplied by (1 - slowFactor)
+  resolution: 128,                  // heightfield cells per side
+  bedrockY: -8,                     // indestructible floor; heights clamp to this
+  craterRadius: 5.0,                // dent extent (world units)
+  craterDepth: 2.0,                 // dent depth (<< blast radius: ground is hard)
+  smoothingPasses: 2,               // gaussian smoothing iters per crater (limits concavities)
+  // Depth -> material layer. slowFactor multiplies drive speed; color is painted
+  // per vertex so the ground shows how slow it is. v1: soil (full) + bedrock (slow).
+  layers: [
+    { above: -1, slow: 1.0, color: 0x4a7a44 }, // grass / topsoil
+    { above: -7, slow: 1.0, color: 0x6b5232 }, // soil (no slow in v1)
+    { bedrock: true, slow: 0.4, color: 0x55503f }, // bedrock: slow + indestructible
+  ],
+};
+
+export const DRIVING = {
+  maxClimb: 0.70,        // tan(35°) tread limit; uphill beyond this is blocked (no slide)
+  uphillCost: 1.2,       // slope-speed penalty: grade * this reduces speed
+  minSlopeMul: 0.25,     // clamp on slope speed multiplier
+  maxSlopeMul: 1.6,
+  groundClearance: 0.15, // tank sits this far above the surface
+  yLerp: 0.3,            // ground-follow smoothing (fake suspension)
+  bodyPitch: true,       // tilt the body to the surface normal
+  pitchLerp: 0.2,        // body-pitch smoothing
 };
 
 export const EXPLOSION = {
